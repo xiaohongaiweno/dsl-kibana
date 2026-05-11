@@ -7,9 +7,8 @@
     "node": "20.14.0"
   },
   "scripts": {
-    "generate:kibana-data": "node ./scripts/generateKibanaConsoleData.mjs",
     "dev": "vite",
-    "build": "npm run generate:kibana-data && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "test": "node --test",
     "test:autocomplete": "node ./scripts/verifyAutocomplete.mjs"
