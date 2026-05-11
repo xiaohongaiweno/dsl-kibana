@@ -1,0 +1,471 @@
+[
+  {
+    "name": "method root no suggestions before typing",
+    "version": "es7",
+    "text": "",
+    "cursor": 0,
+    "expectFrom": 0,
+    "mustExclude": ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"]
+  },
+  {
+    "name": "method root after one char",
+    "version": "es7",
+    "text": "G",
+    "cursor": 1,
+    "expectFrom": 0,
+    "mustInclude": ["GET"],
+    "mustExclude": ["POST", "OPTIONS", "PATCH"],
+    "mustContainEntries": {
+      "GET": {
+        "type": "keyword",
+        "detail": "method"
+      }
+    }
+  },
+  {
+    "name": "path after method",
+    "version": "es7",
+    "text": "GET /",
+    "cursor": 5,
+    "expectFrom": 4,
+    "mustInclude": ["/_search", "/_watcher/stats"],
+    "mustContainEntries": {
+      "/_search": {
+        "type": "text",
+        "detail": "endpoint"
+      }
+    }
+  },
+  {
+    "name": "search query params",
+    "version": "es7",
+    "text": "GET /_search?",
+    "cursor": 13,
+    "expectFrom": 13,
+    "mustInclude": ["q", "size", "sort"],
+    "mustContainEntries": {
+      "default_operator": {
+        "apply": "default_operator=",
+        "detail": "param"
+      }
+    }
+  },
+  {
+    "name": "search query param values",
+    "version": "es7",
+    "text": "GET /_search?default_operator=",
+    "cursor": 30,
+    "expectFrom": 30,
+    "mustInclude": ["AND", "OR"]
+  },
+  {
+    "name": "body top level no suggestions before typing",
+    "version": "es7",
+    "text": "GET /_search\n{\n  ",
+    "cursor": 17,
+    "expectFrom": 17,
+    "mustExclude": ["query", "aggs", "sort"]
+  },
+  {
+    "name": "body top level after one char",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"q",
+    "cursor": 19,
+    "expectFrom": 17,
+    "mustInclude": ["query"],
+    "mustContainEntries": {
+      "query": {
+        "apply": "\"query\": {\n  \n  }",
+        "type": "property"
+      }
+    }
+  },
+  {
+    "name": "body query level no suggestions before typing",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    ",
+    "cursor": 32,
+    "expectFrom": 32,
+    "mustExclude": ["match", "bool", "term"]
+  },
+  {
+    "name": "body query level after one char",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"b",
+    "cursor": 34,
+    "expectFrom": 32,
+    "mustInclude": ["bool"],
+    "mustContainEntries": {
+      "bool": {
+        "apply": "\"bool\": {\n    \n    }"
+      }
+    }
+  },
+  {
+    "name": "bool object does not suggest bool as direct child",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"bool\": {\n      \"b",
+    "cursor": 57,
+    "expectFrom": 48,
+    "mustInclude": ["boost"],
+    "mustExclude": ["bool"]
+  },
+  {
+    "name": "bool object does not leak top level partial_fields",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"bool\": {\n      \"p",
+    "cursor": 57,
+    "expectFrom": 48,
+    "mustExclude": ["partial_fields", "profile", "post_filter"]
+  },
+  {
+    "name": "bool object does not leak top level aggs",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"bool\": {\n      \"a",
+    "cursor": 57,
+    "expectFrom": 48,
+    "mustExclude": ["aggs"]
+  },
+  {
+    "name": "bool must clause suggests bool as nested query",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        {\n          \"b",
+    "cursor": 82,
+    "expectFrom": 78,
+    "mustInclude": ["bool", "boosting"]
+  },
+  {
+    "name": "body no suggestions immediately after comma",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"bool\": {},",
+    "cursor": 44,
+    "expectFrom": 44,
+    "mustExclude": ["match", "bool", "term"]
+  },
+  {
+    "name": "body post_filter scope link no suggestions before typing",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"post_filter\": {\n    ",
+    "cursor": 38,
+    "expectFrom": 38,
+    "mustExclude": ["bool", "term", "range"]
+  },
+  {
+    "name": "body post_filter scope link after one char",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"post_filter\": {\n    \"t",
+    "cursor": 40,
+    "expectFrom": 38,
+    "mustInclude": ["term"],
+    "mustContainEntries": {
+      "term": {
+        "apply": "\"term\": {\n      \"FIELD\": \"VALUE\"\n    }"
+      }
+    }
+  },
+  {
+    "name": "body sort any_of",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"sort\": [\n    ",
+    "cursor": 29,
+    "expectFrom": 29,
+    "mustInclude": ["message", "@timestamp", "_score"],
+    "mustContainEntries": {
+      "message": {
+        "detail": "text"
+      },
+      "_score": {
+        "apply": "\"_score\": "
+      }
+    }
+  },
+  {
+    "name": "es6 includes typed search path",
+    "version": "es6",
+    "text": "GET /",
+    "cursor": 5,
+    "expectFrom": 4,
+    "mustInclude": ["/{indices}/{type}/_search"]
+  },
+  {
+    "name": "es6 body query level after one char",
+    "version": "es6",
+    "text": "GET /foo/bar/_search\n{\n  \"query\": {\n    \"m",
+    "cursor": 42,
+    "expectFrom": 40,
+    "mustInclude": ["match"]
+  },
+  {
+    "name": "es7 excludes typed search path",
+    "version": "es7",
+    "text": "GET /foo/",
+    "cursor": 9,
+    "expectFrom": 9,
+    "mustInclude": ["_search"],
+    "mustExclude": ["/{indices}/{type}/_search"],
+    "mustContainEntries": {
+      "_search": {
+        "apply": "_search"
+      }
+    }
+  },
+  {
+    "name": "es8 excludes typed search path",
+    "version": "es8",
+    "text": "GET /foo/",
+    "cursor": 9,
+    "expectFrom": 9,
+    "mustInclude": ["_search"],
+    "mustExclude": ["/{indices}/{type}/_search"],
+    "mustContainEntries": {
+      "_search": {
+        "apply": "_search"
+      }
+    }
+  },
+  {
+    "name": "es8 body top level no suggestions before typing",
+    "version": "es8",
+    "text": "GET /_search\n{\n  ",
+    "cursor": 17,
+    "expectFrom": 17,
+    "mustExclude": ["query", "aggs", "sort", "knn", "retriever"]
+  },
+  {
+    "name": "es8 body top level after one char",
+    "version": "es8",
+    "text": "GET /_search\n{\n  \"k",
+    "cursor": 19,
+    "expectFrom": 17,
+    "mustInclude": ["knn"],
+    "mustContainEntries": {
+      "knn": {
+        "type": "property"
+      }
+    }
+  },
+  {
+    "name": "es8 body no suggestions immediately after comma",
+    "version": "es8",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"bool\": {},",
+    "cursor": 44,
+    "expectFrom": 44,
+    "mustExclude": ["runtime_mappings", "retriever", "knn", "match", "bool", "term"]
+  },
+  {
+    "name": "es8 search query params",
+    "version": "es8",
+    "text": "GET /_search?",
+    "cursor": 13,
+    "expectFrom": 13,
+    "mustInclude": ["q", "size", "sort", "default_operator"],
+    "mustContainEntries": {
+      "default_operator": {
+        "apply": "default_operator=",
+        "detail": "param"
+      }
+    }
+  },
+  {
+    "name": "es8 xpack watcher paths",
+    "version": "es8",
+    "text": "GET /_wat",
+    "cursor": 9,
+    "expectFrom": 4,
+    "mustInclude": ["/_watcher/stats", "/_watcher/stats/{metrics}"]
+  },
+  {
+    "name": "es8 search body includes runtime_mappings and knn",
+    "version": "es8",
+    "text": "GET /_search\n{\n  \"r",
+    "cursor": 19,
+    "expectFrom": 17,
+    "mustInclude": ["runtime_mappings", "retriever"],
+    "mustContainEntries": {
+      "retriever": {
+        "type": "property"
+      }
+    }
+  },
+  {
+    "name": "es7 search body excludes es8 top level additions",
+    "version": "es7",
+    "text": "GET /_search\n{\n  ",
+    "cursor": 17,
+    "expectFrom": 17,
+    "mustExclude": ["runtime_mappings", "knn", "pit", "retriever"]
+  },
+  {
+    "name": "es8 retriever inner variants",
+    "version": "es8",
+    "text": "GET /_search\n{\n  \"retriever\": {\n    \"k",
+    "cursor": 38,
+    "expectFrom": 36,
+    "mustInclude": ["knn"]
+  },
+  {
+    "name": "es8 knn top level fields",
+    "version": "es8",
+    "text": "GET /_search\n{\n  \"knn\": {\n    \"f",
+    "cursor": 32,
+    "expectFrom": 30,
+    "mustInclude": ["field", "filter"]
+  },
+  {
+    "name": "es8 adds knn search endpoint",
+    "version": "es8",
+    "text": "GET /_k",
+    "cursor": 7,
+    "expectFrom": 4,
+    "mustInclude": ["/_knn_search"]
+  },
+  {
+    "name": "es8 adds async search endpoint",
+    "version": "es8",
+    "text": "GET /_a",
+    "cursor": 7,
+    "expectFrom": 4,
+    "mustInclude": ["/_async_search"],
+    "mustContainEntries": {
+      "/_async_search": {
+        "detail": "endpoint"
+      }
+    }
+  },
+  {
+    "name": "es8 async search query params",
+    "version": "es8",
+    "text": "GET /_async_search?",
+    "cursor": 19,
+    "expectFrom": 19,
+    "mustInclude": ["wait_for_completion_timeout", "keep_alive", "keep_on_completion"]
+  },
+  {
+    "name": "es8 search adds include_named_queries_score param",
+    "version": "es8",
+    "text": "GET /_search?include_n",
+    "cursor": 23,
+    "expectFrom": 14,
+    "mustInclude": ["include_named_queries_score"]
+  },
+  {
+    "name": "es7 search excludes include_named_queries_score param",
+    "version": "es7",
+    "text": "GET /_search?include_n",
+    "cursor": 23,
+    "expectFrom": 14,
+    "mustExclude": ["include_named_queries_score"]
+  },
+  {
+    "name": "es8 search_template keeps template params shape",
+    "version": "es8",
+    "text": "POST /_search/template\n{\n  \"params\": {\n    \"P",
+    "cursor": 43,
+    "expectFrom": 43,
+    "mustExclude": ["PARAM_NAME"]
+  },
+  {
+    "name": "es8 render_search_template supports id and source",
+    "version": "es8",
+    "text": "POST /_render/template\n{\n  \"s",
+    "cursor": 29,
+    "expectFrom": 27,
+    "mustInclude": ["source"]
+  },
+  {
+    "name": "dynamic path metrics",
+    "version": "es7",
+    "text": "GET /_cluster/state/{metrics}",
+    "cursor": 29,
+    "expectFrom": 29,
+    "mustInclude": ["_all", "metadata", "nodes"]
+  },
+  {
+    "name": "template path values",
+    "version": "es7",
+    "text": "GET /_template/{template}",
+    "cursor": 24,
+    "expectFrom": 24,
+    "mustInclude": ["tpl_logs", "tpl_metrics"],
+    "mustContainEntries": {
+      "tpl_logs": {
+        "detail": "template",
+        "type": "constant"
+      }
+    }
+  },
+  {
+    "name": "xpack watcher paths",
+    "version": "es7",
+    "text": "GET /_wat",
+    "cursor": 9,
+    "expectFrom": 4,
+    "mustInclude": ["/_watcher/stats", "/_watcher/stats/{metrics}"]
+  },
+  {
+    "name": "xpack watcher metrics",
+    "version": "es7",
+    "text": "GET /_watcher/stats/{metrics}",
+    "cursor": 29,
+    "expectFrom": 29,
+    "mustInclude": ["_all", "current_watches", "queued_watches"]
+  },
+  {
+    "name": "multi request second block",
+    "version": "es7",
+    "text": "GET /_search\n{}\n\nPOST /_search\n{\n  ",
+    "cursor": 32,
+    "expectFrom": 32,
+    "mustInclude": ["query", "aggs", "sort"]
+  },
+  {
+    "name": "aggregation type only inside aggs name object",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"aggs\": {\n    \"NAME\": {\n      \"a",
+    "cursor": 49,
+    "expectFrom": 47,
+    "mustInclude": ["avg"],
+    "mustExclude": ["aggs", "query", "sort"]
+  },
+  {
+    "name": "aggregation type survives chinese key text",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"aggs\": {\n    \"NAME\": {\n      \"这里输入av",
+    "cursor": 54,
+    "expectFrom": 47,
+    "mustInclude": ["avg"],
+    "mustExclude": ["aggs", "query", "sort"]
+  },
+  {
+    "name": "aggregation type survives chinese suffix after ascii prefix",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"aggs\": {\n    \"NAME\": {\n      \"a这里的双引号内部也要有avg等对应的补全框",
+    "cursor": 49,
+    "expectFrom": 47,
+    "mustInclude": ["avg"],
+    "mustExclude": ["aggs", "query", "sort"]
+  },
+  {
+    "name": "aggregation type completes plain ascii prefix",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"aggs\": {\n    \"NAME\": {\n      \"a",
+    "cursor": 49,
+    "expectFrom": 47,
+    "mustInclude": ["avg"],
+    "mustExclude": ["aggs", "query", "sort"]
+  },
+  {
+    "name": "path segment completion after index",
+    "version": "es7",
+    "text": "GET xiao/_sea",
+    "cursor": 13,
+    "expectFrom": 9,
+    "mustInclude": ["_search"],
+    "mustContainEntries": {
+      "_search": {
+        "apply": "_search",
+        "detail": "endpoint"
+      }
+    }
+  }
+]
