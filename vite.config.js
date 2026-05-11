@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import { createVuePlugin } from 'vite-plugin-vue2'
 
-// https://vite.dev/config/
+// Vue 2.5.x needs the community plugin; the official Vite plugin only supports Vue 2.7.
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [createVuePlugin()],
 })

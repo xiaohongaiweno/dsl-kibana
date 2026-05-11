@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
-const FRONTEND_SRC = path.join(ROOT, 'frontend', 'src');
-const KIBANA_ROOT = path.join(ROOT, 'kibana-7.6.0');
+const PROJECT_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const WORKSPACE_ROOT = path.resolve(PROJECT_ROOT, '..');
+const FRONTEND_SRC = path.join(PROJECT_ROOT, 'src');
+const KIBANA_ROOT = path.join(WORKSPACE_ROOT, 'kibana-7.6.0');
 
 function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -571,4 +572,4 @@ const fileContents = `export const kibanaConsoleData = ${JSON.stringify(
 )};\n`;
 
 fs.writeFileSync(outputPath, fileContents);
-console.log(`Generated ${path.relative(ROOT, outputPath)}`);
+console.log(`Generated ${path.relative(PROJECT_ROOT, outputPath)}`);

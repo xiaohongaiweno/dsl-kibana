@@ -1,5 +1,4 @@
-<script setup>
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+<script>
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
@@ -12,59 +11,28 @@ import { createEsMetadataService } from './esMetadataService.js';
 import { createRequestExecutionManager } from './requestExecution.js';
 
 const ES_HOST = 'http://localhost:9200';
-
-const editorRef = ref(null);
-const resultRef = ref(null);
-const editorView = shallowRef(null);
-const resultView = shallowRef(null);
-
-const isLoading = ref(false);
-const error = ref('');
-const responseTime = ref(0);
-const statusCode = ref(null);
-const activeVersion = ref('es7');
-const metadataService = createEsMetadataService(ES_HOST);
-const requestExecution = createRequestExecutionManager();
-const metadataStatus = ref(metadataService.getStatus());
-let unsubscribeMetadata = null;
 const REQUEST_TIMEOUT_MS = 30000;
-
-const defaultQuery = `GET /_search
+const DEFAULT_QUERY = `GET /_search
 {
   "query": {
     "match_all": {}
   }
 }`;
 
-const versionLabel = computed(() => {
-  if (activeVersion.value === 'es6') return 'ES 6 rules';
-  if (activeVersion.value === 'es8') return 'ES 8 rules';
-  return 'ES 7 rules';
-});
-const metadataBadge = computed(() => {
-  if (metadataStatus.value.state === 'loading') {
-    return metadataStatus.value.stale ? 'Metadata stale' : 'Loading metadata';
-  }
-  if (metadataStatus.value.state === 'stale') {
-    return 'Metadata stale';
-  }
-  if (metadataStatus.value.state === 'error') {
-    return 'Metadata unavailable';
-  }
-  if (metadataStatus.value.state === 'ready') {
-    return 'Metadata ready';
-  }
-  return 'Metadata idle';
-});
-const completionSource = createKibanaCompletionSource(activeVersion, metadataService);
+function createVersionRef(vm) {
+  return {
+    get value() {
+      return vm.activeVersion;
+    },
+  };
+}
 
-function createEditor(parent, readonly = false) {
+function createEditor(parent, completionSource, readonly) {
   const extensions = [
     basicSetup,
     oneDark,
-    // Trigger body DSL completions immediately so short prefixes like `av` surface without requiring another keystroke.
     autocompletion({ override: [completionSource], activateOnTypingDelay: 0 }),
-    keymap.of([...defaultKeymap, ...completionKeymap, indentWithTab]),
+    keymap.of([].concat(defaultKeymap, completionKeymap, [indentWithTab])),
     EditorView.lineWrapping,
     EditorView.theme({
       '&': { height: '100%', fontSize: '14px', backgroundColor: '#11161d', color: '#d6dde8' },
@@ -89,29 +57,24 @@ function createEditor(parent, readonly = false) {
 
   return new EditorView({
     state: EditorState.create({
-      doc: readonly ? '' : defaultQuery,
+      doc: readonly ? '' : DEFAULT_QUERY,
       extensions,
     }),
     parent,
   });
 }
 
-function updateResult(text) {
-  if (!resultView.value) return;
-  resultView.value.dispatch({
-    changes: { from: 0, to: resultView.value.state.doc.length, insert: text },
-  });
-}
-
 function mergeAbortSignals(signals) {
   const controller = new AbortController();
-  const onAbort = event => {
-    if (!controller.signal.aborted) {
-      controller.abort(event?.target?.reason || event?.target || new DOMException('Aborted', 'AbortError'));
-    }
-  };
+  const activeSignals = signals.filter(Boolean);
 
-  for (const signal of signals.filter(Boolean)) {
+  function onAbort(event) {
+    if (!controller.signal.aborted) {
+      controller.abort(event && event.target ? event.target.reason || event.target : new DOMException('Aborted', 'AbortError'));
+    }
+  }
+
+  for (const signal of activeSignals) {
     if (signal.aborted) {
       controller.abort(signal.reason || new DOMException('Aborted', 'AbortError'));
       return controller.signal;
@@ -122,187 +85,253 @@ function mergeAbortSignals(signals) {
   return controller.signal;
 }
 
-function getCurrentRequestBlock() {
-  if (!editorView.value) return '';
-  const docText = editorView.value.state.doc.toString();
-  const parsed = parseConsoleRequests(docText);
-  const cursor = editorView.value.state.selection.main.head;
-  const request =
-    parsed.requests.find(item => cursor >= item.start && cursor <= item.end) || parsed.requests[0];
-  if (!request) {
+export default {
+  name: 'App',
+
+  data() {
+    const metadataService = createEsMetadataService(ES_HOST);
+    const requestExecution = createRequestExecutionManager();
+
     return {
-      text: docText.trim(),
-      start: 0,
-      end: docText.length,
+      metadataService,
+      requestExecution,
+      editorView: null,
+      resultView: null,
+      unsubscribeMetadata: null,
+      completionSource: null,
+      isLoading: false,
+      error: '',
+      responseTime: 0,
+      statusCode: null,
+      activeVersion: 'es7',
+      metadataStatus: metadataService.getStatus(),
     };
-  }
-  return {
-    text: docText.slice(request.start, request.end).trim(),
-    start: request.start,
-    end: request.end,
-  };
-}
+  },
 
-function formatRequestBlock(requestText) {
-  const lines = requestText.split(/\r?\n/);
-  const requestLine = (lines[0] || '').trim();
-  const bodyText = lines.slice(1).join('\n').trim();
+  computed: {
+    versionLabel() {
+      if (this.activeVersion === 'es6') return 'ES 6 rules';
+      if (this.activeVersion === 'es8') return 'ES 8 rules';
+      return 'ES 7 rules';
+    },
 
-  if (!bodyText) {
-    return `${requestLine}\n`;
-  }
+    metadataBadge() {
+      if (this.metadataStatus.state === 'loading') {
+        return this.metadataStatus.stale ? 'Metadata stale' : 'Loading metadata';
+      }
+      if (this.metadataStatus.state === 'stale') {
+        return 'Metadata stale';
+      }
+      if (this.metadataStatus.state === 'error') {
+        return 'Metadata unavailable';
+      }
+      if (this.metadataStatus.state === 'ready') {
+        return 'Metadata ready';
+      }
+      return 'Metadata idle';
+    },
+  },
 
-  try {
-    return `${requestLine}\n${JSON.stringify(JSON.parse(bodyText), null, 2)}`;
-  } catch {
-    return requestText;
-  }
-}
-
-function normalizeCurrentRequestBlock() {
-  if (!editorView.value) return '';
-  const requestBlock = getCurrentRequestBlock();
-  const formatted = formatRequestBlock(requestBlock.text);
-
-  if (formatted !== requestBlock.text) {
-    editorView.value.dispatch({
-      changes: {
-        from: requestBlock.start,
-        to: requestBlock.end,
-        insert: formatted,
-      },
-      selection: { anchor: requestBlock.start + formatted.length },
-      scrollIntoView: true,
+  mounted() {
+    this.completionSource = createKibanaCompletionSource(createVersionRef(this), this.metadataService);
+    this.unsubscribeMetadata = this.metadataService.subscribe(nextStatus => {
+      this.metadataStatus = nextStatus;
     });
-  }
+    this.metadataService.refresh().catch(() => {});
 
-  return formatted.trim();
-}
-
-function formatCurrentRequest() {
-  const formatted = normalizeCurrentRequestBlock();
-  if (formatted) {
-    error.value = '';
-  }
-}
-
-async function executeQuery() {
-  if (isLoading.value) {
-    return;
-  }
-
-  const requestText = normalizeCurrentRequestBlock();
-  if (!requestText) {
-    error.value = 'Request cannot be empty';
-    return;
-  }
-
-  const lines = requestText.split(/\r?\n/);
-  const requestMeta = parseRequestLine(lines[0] || '');
-  if (!requestMeta) {
-    error.value = 'Request must start with METHOD + URL, for example: GET /_search';
-    return;
-  }
-
-  const bodyText = lines.slice(1).join('\n').trim();
-  const url = `${ES_HOST}${requestMeta.path.startsWith('/') ? requestMeta.path : `/${requestMeta.path}`}${
-    requestMeta.queryString ? `?${requestMeta.queryString}` : ''
-  }`;
-
-  isLoading.value = true;
-  error.value = '';
-  statusCode.value = null;
-  responseTime.value = 0;
-  const startTime = performance.now();
-  const execution = requestExecution.startExecution();
-  const timeoutController = new AbortController();
-  const timeoutId = window.setTimeout(() => {
-    timeoutController.abort(new DOMException('Request timed out', 'TimeoutError'));
-  }, REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      method: requestMeta.method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: bodyText || undefined,
-      signal: mergeAbortSignals([execution.controller.signal, timeoutController.signal]),
-    });
-
-    if (!execution.isLatest()) {
-      return;
+    if (this.$refs.editorRef) {
+      this.editorView = createEditor(this.$refs.editorRef, this.completionSource, false);
     }
-
-    responseTime.value = Math.round(performance.now() - startTime);
-    statusCode.value = response.status;
-
-    const text = await response.text();
-    if (!execution.isLatest()) {
-      return;
+    if (this.$refs.resultRef) {
+      this.resultView = createEditor(this.$refs.resultRef, this.completionSource, true);
     }
+  },
 
-    try {
-      updateResult(JSON.stringify(JSON.parse(text), null, 2));
-    } catch {
-      updateResult(text);
+  beforeDestroy() {
+    if (this.unsubscribeMetadata) {
+      this.unsubscribeMetadata();
     }
-
-    if (!response.ok) {
-      error.value = `HTTP ${response.status}: ${response.statusText}`;
+    this.requestExecution.cancelActive();
+    if (this.editorView) {
+      this.editorView.destroy();
     }
-  } catch (err) {
-    if (!execution.isLatest()) {
-      return;
+    if (this.resultView) {
+      this.resultView.destroy();
     }
+  },
 
-    if (err?.name === 'TimeoutError' || err?.message === 'Request timed out') {
-      error.value = 'Request timed out';
-    } else if (err?.name === 'AbortError') {
-      error.value = 'Request cancelled';
-    } else {
-      error.value = err.message || 'Request failed';
-    }
-    updateResult('{}');
-  } finally {
-    window.clearTimeout(timeoutId);
-    execution.release();
-    if (execution.isLatest()) {
-      isLoading.value = false;
-    }
-  }
-}
+  methods: {
+    updateResult(text) {
+      if (!this.resultView) return;
+      this.resultView.dispatch({
+        changes: { from: 0, to: this.resultView.state.doc.length, insert: text },
+      });
+    },
 
-function handleKeydown(event) {
-  if (event.ctrlKey && event.key === 'Enter') {
-    event.preventDefault();
-    executeQuery();
-  }
-}
+    getCurrentRequestBlock() {
+      if (!this.editorView) return '';
+      const docText = this.editorView.state.doc.toString();
+      const parsed = parseConsoleRequests(docText);
+      const cursor = this.editorView.state.selection.main.head;
+      const request = parsed.requests.find(item => cursor >= item.start && cursor <= item.end) || parsed.requests[0];
 
-function setVersion(version) {
-  activeVersion.value = version;
-}
+      if (!request) {
+        return {
+          text: docText.trim(),
+          start: 0,
+          end: docText.length,
+        };
+      }
 
-onMounted(() => {
-  unsubscribeMetadata = metadataService.subscribe(nextStatus => {
-    metadataStatus.value = nextStatus;
-  });
-  metadataService.refresh().catch(() => {});
-  if (editorRef.value) {
-    editorView.value = createEditor(editorRef.value);
-  }
-  if (resultRef.value) {
-    resultView.value = createEditor(resultRef.value, true);
-  }
-});
+      return {
+        text: docText.slice(request.start, request.end).trim(),
+        start: request.start,
+        end: request.end,
+      };
+    },
 
-onBeforeUnmount(() => {
-  unsubscribeMetadata?.();
-  requestExecution.cancelActive();
-  editorView.value?.destroy();
-  resultView.value?.destroy();
-});
+    formatRequestBlock(requestText) {
+      const lines = requestText.split(/\r?\n/);
+      const requestLine = (lines[0] || '').trim();
+      const bodyText = lines.slice(1).join('\n').trim();
+
+      if (!bodyText) {
+        return `${requestLine}\n`;
+      }
+
+      try {
+        return `${requestLine}\n${JSON.stringify(JSON.parse(bodyText), null, 2)}`;
+      } catch (error) {
+        return requestText;
+      }
+    },
+
+    normalizeCurrentRequestBlock() {
+      if (!this.editorView) return '';
+      const requestBlock = this.getCurrentRequestBlock();
+      const formatted = this.formatRequestBlock(requestBlock.text);
+
+      if (formatted !== requestBlock.text) {
+        this.editorView.dispatch({
+          changes: {
+            from: requestBlock.start,
+            to: requestBlock.end,
+            insert: formatted,
+          },
+          selection: { anchor: requestBlock.start + formatted.length },
+          scrollIntoView: true,
+        });
+      }
+
+      return formatted.trim();
+    },
+
+    formatCurrentRequest() {
+      const formatted = this.normalizeCurrentRequestBlock();
+      if (formatted) {
+        this.error = '';
+      }
+    },
+
+    async executeQuery() {
+      if (this.isLoading) {
+        return;
+      }
+
+      const requestText = this.normalizeCurrentRequestBlock();
+      if (!requestText) {
+        this.error = 'Request cannot be empty';
+        return;
+      }
+
+      const lines = requestText.split(/\r?\n/);
+      const requestMeta = parseRequestLine(lines[0] || '');
+      if (!requestMeta) {
+        this.error = 'Request must start with METHOD + URL, for example: GET /_search';
+        return;
+      }
+
+      const bodyText = lines.slice(1).join('\n').trim();
+      const url = `${ES_HOST}${requestMeta.path.startsWith('/') ? requestMeta.path : `/${requestMeta.path}`}${
+        requestMeta.queryString ? `?${requestMeta.queryString}` : ''
+      }`;
+
+      this.isLoading = true;
+      this.error = '';
+      this.statusCode = null;
+      this.responseTime = 0;
+      const startTime = performance.now();
+      const execution = this.requestExecution.startExecution();
+      const timeoutController = new AbortController();
+      const timeoutId = window.setTimeout(() => {
+        timeoutController.abort(new DOMException('Request timed out', 'TimeoutError'));
+      }, REQUEST_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(url, {
+          method: requestMeta.method,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: bodyText || undefined,
+          signal: mergeAbortSignals([execution.controller.signal, timeoutController.signal]),
+        });
+
+        if (!execution.isLatest()) {
+          return;
+        }
+
+        this.responseTime = Math.round(performance.now() - startTime);
+        this.statusCode = response.status;
+
+        const text = await response.text();
+        if (!execution.isLatest()) {
+          return;
+        }
+
+        try {
+          this.updateResult(JSON.stringify(JSON.parse(text), null, 2));
+        } catch (error) {
+          this.updateResult(text);
+        }
+
+        if (!response.ok) {
+          this.error = `HTTP ${response.status}: ${response.statusText}`;
+        }
+      } catch (error) {
+        if (!execution.isLatest()) {
+          return;
+        }
+
+        if (error && (error.name === 'TimeoutError' || error.message === 'Request timed out')) {
+          this.error = 'Request timed out';
+        } else if (error && error.name === 'AbortError') {
+          this.error = 'Request cancelled';
+        } else {
+          this.error = (error && error.message) || 'Request failed';
+        }
+        this.updateResult('{}');
+      } finally {
+        window.clearTimeout(timeoutId);
+        execution.release();
+        if (execution.isLatest()) {
+          this.isLoading = false;
+        }
+      }
+    },
+
+    handleKeydown(event) {
+      if (event.ctrlKey && event.key === 'Enter') {
+        event.preventDefault();
+        this.executeQuery();
+      }
+    },
+
+    setVersion(version) {
+      this.activeVersion = version;
+    },
+  },
+};
 </script>
 
 <template>
@@ -373,7 +402,7 @@ onBeforeUnmount(() => {
         <div class="panel-header">
           <div class="result-heading">
             <span class="panel-title">Response</span>
-            <div class="result-meta" v-if="statusCode !== null">
+            <div v-if="statusCode !== null" class="result-meta">
               <span :class="['status', statusCode < 400 ? 'success' : 'error']">
                 {{ statusCode }}
               </span>
