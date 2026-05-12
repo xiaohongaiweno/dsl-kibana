@@ -358,6 +358,35 @@
     }
   },
   {
+    "name": "es8 query dsl includes knn query",
+    "version": "es8",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"k",
+    "cursor": 34,
+    "expectFrom": 32,
+    "mustInclude": ["knn"],
+    "mustContainEntries": {
+      "knn": {
+        "type": "property"
+      }
+    }
+  },
+  {
+    "name": "es8 knn query fields",
+    "version": "es8",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"knn\": {\n      \"q",
+    "cursor": 51,
+    "expectFrom": 47,
+    "mustInclude": ["query_vector", "query_vector_builder"],
+    "mustContainEntries": {
+      "query_vector": {
+        "type": "property"
+      },
+      "query_vector_builder": {
+        "type": "property"
+      }
+    }
+  },
+  {
     "name": "es8 body no suggestions immediately after comma",
     "version": "es8",
     "text": "GET /_search\n{\n  \"query\": {\n    \"bool\": {},",

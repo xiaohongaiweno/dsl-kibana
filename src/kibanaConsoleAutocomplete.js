@@ -3,6 +3,51 @@ import { findRequestAtOffset, parseConsoleRequests, parseRequestLine } from './k
 import { SUPPORTED_HTTP_METHODS, createLooseRequestLineRegExp } from './requestMethods.js';
 
 const REQUEST_LINE_PREFIX_RE = createLooseRequestLineRegExp();
+const ES8_KNN_QUERY_RULE = {
+  __template: {
+    field: 'VECTOR_FIELD',
+    query_vector: [0.1, 0.2, 0.3],
+    k: 10,
+    num_candidates: 100,
+  },
+  field: '{field}',
+  query_vector: [''],
+  query_vector_builder: {
+    __template: {
+      text_embedding: {
+        model_id: 'MODEL_ID',
+        model_text: 'text to embed',
+      },
+    },
+    text_embedding: {
+      model_id: '',
+      model_text: '',
+    },
+  },
+  k: 10,
+  num_candidates: 100,
+  boost: 1,
+  similarity: 0.75,
+  filter: {
+    __one_of: [
+      {
+        __scope_link: 'GLOBAL.filter',
+      },
+      [
+        {
+          __scope_link: 'GLOBAL.filter',
+        },
+      ],
+    ],
+  },
+  _name: '',
+  rescore_vector: {
+    __template: {
+      oversample: 2,
+    },
+    oversample: 2,
+  },
+};
 
 function getMethodCompletionResult(from, prefix) {
   if (!prefix || prefix.length < 1) {
@@ -1020,10 +1065,30 @@ function createCompiledApi(api, version) {
   return compiled;
 }
 
+function createVersionedApiSpecs() {
+  const es8 = kibanaConsoleData.es8 || kibanaConsoleData.es7;
+  return {
+    es6: kibanaConsoleData.es6,
+    es7: kibanaConsoleData.es7,
+    es8: {
+      ...es8,
+      globals: {
+        ...(es8.globals || {}),
+        query: {
+          ...((es8.globals && es8.globals.query) || {}),
+          knn: ES8_KNN_QUERY_RULE,
+        },
+      },
+    },
+  };
+}
+
+const versionedApiSpecs = createVersionedApiSpecs();
+
 const compiledApis = {
-  es6: createCompiledApi(kibanaConsoleData.es6, 'es6'),
-  es7: createCompiledApi(kibanaConsoleData.es7, 'es7'),
-  es8: createCompiledApi(kibanaConsoleData.es8 || kibanaConsoleData.es7, 'es8'),
+  es6: createCompiledApi(versionedApiSpecs.es6, 'es6'),
+  es7: createCompiledApi(versionedApiSpecs.es7, 'es7'),
+  es8: createCompiledApi(versionedApiSpecs.es8, 'es8'),
 };
 
 function getCompiledApi(version) {
