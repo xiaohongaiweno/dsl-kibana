@@ -32442,9 +32442,11 @@ export const kibanaConsoleData = {
               ]
             }
           },
-          "moving_avg": {
+          "moving_fn": {
             "__template": {
-              "buckets_path": ""
+              "buckets_path": "",
+              "window": 10,
+              "script": "MovingFunctions.unweightedAvg(values)"
             },
             "buckets_path": "",
             "format": "",
@@ -32454,28 +32456,9 @@ export const kibanaConsoleData = {
                 "insert_zeros"
               ]
             },
-            "window": 5,
-            "model": {
-              "__one_of": [
-                "simple",
-                "linear",
-                "ewma",
-                "holt",
-                "holt_winters"
-              ]
-            },
-            "settings": {
-              "type": {
-                "__one_of": [
-                  "add",
-                  "mult"
-                ]
-              },
-              "alpha": 0.5,
-              "beta": 0.5,
-              "gamma": 0.5,
-              "period": 7
-            }
+            "window": 10,
+            "script": "MovingFunctions.unweightedAvg(values)",
+            "shift": 0
           },
           "cumulative_sum": {
             "__template": {
@@ -33429,9 +33412,11 @@ export const kibanaConsoleData = {
               ]
             }
           },
-          "moving_avg": {
+          "moving_fn": {
             "__template": {
-              "buckets_path": ""
+              "buckets_path": "",
+              "window": 10,
+              "script": "MovingFunctions.unweightedAvg(values)"
             },
             "buckets_path": "",
             "format": "",
@@ -33441,28 +33426,9 @@ export const kibanaConsoleData = {
                 "insert_zeros"
               ]
             },
-            "window": 5,
-            "model": {
-              "__one_of": [
-                "simple",
-                "linear",
-                "ewma",
-                "holt",
-                "holt_winters"
-              ]
-            },
-            "settings": {
-              "type": {
-                "__one_of": [
-                  "add",
-                  "mult"
-                ]
-              },
-              "alpha": 0.5,
-              "beta": 0.5,
-              "gamma": 0.5,
-              "period": 7
-            }
+            "window": 10,
+            "script": "MovingFunctions.unweightedAvg(values)",
+            "shift": 0
           },
           "cumulative_sum": {
             "__template": {

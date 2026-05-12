@@ -69,6 +69,22 @@ function normalizePattern(pattern, version) {
   return version === 'es6' ? pattern : pattern.replace(/\/\{type\}(?=\/|$)/g, '');
 }
 
+function isVersionCompatiblePattern(pattern, version) {
+  if (pattern.includes('/_mappings') || pattern.startsWith('_mappings')) {
+    return version !== 'es6';
+  }
+
+  if (pattern.includes('/_mapping') || pattern.startsWith('_mapping')) {
+    return version === 'es6' || !pattern.includes('{type}');
+  }
+
+  return true;
+}
+
+function getVersionCompatiblePatterns(patterns, version) {
+  return (patterns || []).filter(pattern => isVersionCompatiblePattern(pattern, version));
+}
+
 function patternToRegex(pattern) {
   return new RegExp(
     `^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\{[^}]+\\\}/g, '[^/]+')}$`
@@ -92,6 +108,10 @@ function findMatchingEndpoints(api, method, path, version) {
     let bestScore = null;
 
     for (const pattern of endpoint.patterns || []) {
+      if (!isVersionCompatiblePattern(pattern, version)) {
+        continue;
+      }
+
       const normalizedPattern = normalizePattern(pattern, version);
       if (!patternToRegex(normalizedPattern).test(normalizedPath)) {
         continue;
@@ -206,16 +226,6 @@ function getQuotedKeyPrefix(beforeCursor) {
   };
 }
 
-function isAggregationTypeSelectionContext(endpointRule, rulePath) {
-  if (!Array.isArray(rulePath) || rulePath.length < 2) {
-    return false;
-  }
-
-  const parentRule = getNearestExistingRuleAtPath(endpointRule, rulePath.slice(0, -1));
-  const template = parentRule?.__template;
-  return Boolean(template?.NAME?.AGG_TYPE);
-}
-
 function buildTemplateInsertion(template, lineIndent) {
   if (isPlainObject(template) && Object.keys(template).length === 0) {
     const text = `{\n${lineIndent}\n${lineIndent}}`;
@@ -308,6 +318,9 @@ function parseBodyTokenPath(bodyText, offset) {
         inString = false;
         if (expectingKey) {
           pendingKey = currentString;
+          if (stack.length && stack[stack.length - 1].type === 'object') {
+            stack[stack.length - 1].tokens.push(currentString);
+          }
         } else if (stack.length && stack[stack.length - 1].type === 'array') {
           stack[stack.length - 1].tokens.push(currentString);
         }
@@ -408,7 +421,7 @@ function parseBodyTokenPath(bodyText, offset) {
     tokenPath,
     rulePath: [...active.path],
     expectingKey,
-    otherTokenValues: active.type === 'array' ? active.tokens : null,
+    otherTokenValues: active.tokens,
     activeType: active.type,
     nestingDepth: stack.length,
   };
@@ -999,6 +1012,7 @@ function createCompiledApi(api, version) {
   for (const [endpointName, endpoint] of Object.entries(api.endpoints || {})) {
     compiled.endpoints[endpointName] = {
       ...endpoint,
+      patterns: getVersionCompatiblePatterns(endpoint.patterns, version),
       compiledBody: compileBodyDescription(endpointName, endpoint.data_autocomplete_rules || {}),
     };
   }
@@ -1134,7 +1148,6 @@ async function getBodyCompletion(context, api, request, metadataService) {
     bodyState.activeType === 'object' && bodyState.nestingDepth > 0
       ? '  '.repeat(bodyState.nestingDepth)
       : lineInfo.indent;
-  const isAggregationTypeSelection = isAggregationTypeSelectionContext(endpointRule, bodyState.rulePath);
   let options = (runtimeContext.autoCompleteSet || []).map(term => {
     const label = term.name ?? term.label ?? '';
     const template = term.template;
@@ -1163,10 +1176,6 @@ async function getBodyCompletion(context, api, request, metadataService) {
       editorReplaceFrom,
     };
   });
-
-  if (isAggregationTypeSelection) {
-    options = options.filter(option => option.label !== 'aggs');
-  }
 
   if (!options.length) {
     const nearestRule =
