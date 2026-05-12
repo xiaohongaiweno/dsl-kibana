@@ -254,6 +254,89 @@
     }
   },
   {
+    "name": "es7 validate query completes full static suffix",
+    "version": "es7",
+    "text": "GET /foo/_va",
+    "cursor": 12,
+    "expectFrom": 9,
+    "mustInclude": ["_validate/query"],
+    "mustExclude": ["_validate"],
+    "mustContainEntries": {
+      "_validate/query": {
+        "apply": "_validate/query"
+      }
+    }
+  },
+  {
+    "name": "es7 search template completes full static suffix",
+    "version": "es7",
+    "text": "GET /foo/_search/t",
+    "cursor": 18,
+    "expectFrom": 17,
+    "mustInclude": ["template"],
+    "mustContainEntries": {
+      "template": {
+        "apply": "template"
+      }
+    }
+  },
+  {
+    "name": "es7 msearch template completes full static suffix",
+    "version": "es7",
+    "text": "GET /foo/_msearch/t",
+    "cursor": 19,
+    "expectFrom": 18,
+    "mustInclude": ["template"],
+    "mustContainEntries": {
+      "template": {
+        "apply": "template"
+      }
+    }
+  },
+  {
+    "name": "es7 ccr path exposes full static suffixes",
+    "version": "es7",
+    "text": "POST /foo/_c",
+    "cursor": 12,
+    "expectFrom": 10,
+    "mustInclude": ["_cache/clear", "_ccr/pause_follow", "_ccr/resume_follow", "_ccr/unfollow"],
+    "mustContainEntries": {
+      "_cache/clear": {
+        "apply": "_cache/clear"
+      },
+      "_ccr/pause_follow": {
+        "apply": "_ccr/pause_follow"
+      }
+    }
+  },
+  {
+    "name": "es7 ilm path exposes full static suffixes by method",
+    "version": "es7",
+    "text": "POST /foo/_i",
+    "cursor": 12,
+    "expectFrom": 10,
+    "mustInclude": ["_ilm/remove", "_ilm/retry"],
+    "mustExclude": ["_ilm/explain"],
+    "mustContainEntries": {
+      "_ilm/remove": {
+        "apply": "_ilm/remove"
+      }
+    }
+  },
+  {
+    "name": "es7 migration deprecations completes full static suffix",
+    "version": "es7",
+    "text": "GET /foo/_mi",
+    "cursor": 12,
+    "expectFrom": 9,
+    "mustInclude": ["_migration/deprecations"],
+    "mustContainEntries": {
+      "_migration/deprecations": {
+        "apply": "_migration/deprecations"
+      }
+    }
+  },
+  {
     "name": "es8 body top level no suggestions before typing",
     "version": "es8",
     "text": "GET /_search\n{\n  ",

@@ -1313,6 +1313,20 @@ function parsePathCompletionContext(rawPath) {
   };
 }
 
+function buildStaticPathSuffix(patternSegments, startIndex) {
+  const suffixSegments = [];
+
+  for (let index = startIndex; index < patternSegments.length; index += 1) {
+    const segment = patternSegments[index];
+    if (!segment || /^\{[^}]+\}$/.test(segment)) {
+      return null;
+    }
+    suffixSegments.push(segment);
+  }
+
+  return suffixSegments.length ? suffixSegments.join('/') : null;
+}
+
 async function getPathSegmentOptions(api, method, rawPath, version, metadataService) {
   const context = parsePathCompletionContext(rawPath);
   if (context.fixedSegments.length === 0) {
@@ -1374,11 +1388,16 @@ async function getPathSegmentOptions(api, method, rawPath, version, metadataServ
         continue;
       }
 
+      const staticSuffix =
+        context.segmentPrefix.length > 0
+          ? buildStaticPathSuffix(patternSegments, context.fixedSegments.length)
+          : null;
+
       suggestions.push({
-        label: currentPatternSegment,
+        label: staticSuffix || currentPatternSegment,
         type: 'text',
         detail: 'endpoint',
-        apply: currentPatternSegment,
+        apply: staticSuffix || currentPatternSegment,
       });
     }
   }

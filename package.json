@@ -11,7 +11,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test",
-    "test:autocomplete": "node ./scripts/verifyAutocomplete.mjs"
+    "test:autocomplete": "node ./scripts/verifyAutocomplete.mjs",
+    "audit:static-suffix": "node ./scripts/auditStaticSuffixEndpoints.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.12.0",
