@@ -422,12 +422,23 @@
     "text": "GET /_search\n{\n  \"r",
     "cursor": 19,
     "expectFrom": 17,
-    "mustInclude": ["runtime_mappings", "retriever"],
+    "mustInclude": ["runtime_mappings", "retriever", "rank"],
     "mustContainEntries": {
       "retriever": {
         "type": "property"
+      },
+      "rank": {
+        "type": "property"
       }
     }
+  },
+  {
+    "name": "es8 rank supports rrf",
+    "version": "es8",
+    "text": "GET /_search\n{\n  \"rank\": {\n    \"r",
+    "cursor": 36,
+    "expectFrom": 31,
+    "mustInclude": ["rrf"]
   },
   {
     "name": "es7 search body excludes es8 top level additions",

@@ -42548,7 +42548,17 @@ export const kibanaConsoleData = {
                 ]
               ]
             }
+          }, "rank": {
+            "rrf": {
+              "__template": {
+                "rank_window_size": 50,
+                "rank_constant": 20
+              },
+              "rank_window_size": 50,
+              "rank_constant": 20
+            }
           },
+
           "min_score": 0.5,
           "pit": {
             "__template": {
