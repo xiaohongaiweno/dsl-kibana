@@ -34496,6 +34496,57 @@ export const kibanaConsoleData = {
         "match_all": {
           "boost": 1
         },
+        "knn": {
+          "__template": {
+            "field": "VECTOR_FIELD",
+            "query_vector": [
+              0.1,
+              0.2,
+              0.3
+            ],
+            "k": 10,
+            "num_candidates": 100
+          },
+          "field": "{field}",
+          "query_vector": [
+            ""
+          ],
+          "query_vector_builder": {
+            "__template": {
+              "text_embedding": {
+                "model_id": "MODEL_ID",
+                "model_text": "text to embed"
+              }
+            },
+            "text_embedding": {
+              "model_id": "",
+              "model_text": ""
+            }
+          },
+          "k": 10,
+          "num_candidates": 100,
+          "boost": 1,
+          "similarity": 0.75,
+          "filter": {
+            "__one_of": [
+              {
+                "__scope_link": "GLOBAL.filter"
+              },
+              [
+                {
+                  "__scope_link": "GLOBAL.filter"
+                }
+              ]
+            ]
+          },
+          "_name": "",
+          "rescore_vector": {
+            "__template": {
+              "oversample": 2
+            },
+            "oversample": 2
+          }
+        },
         "more_like_this": {
           "__template": {
             "fields": [
