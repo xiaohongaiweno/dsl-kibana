@@ -2971,7 +2971,16 @@ export const kibanaConsoleData = {
             ],
             "like": "text like this one",
             "min_term_freq": 1,
-            "max_query_terms": 12
+            "max_query_terms": 12,
+            "min_doc_freq": 1,
+            "max_doc_freq": 100,
+            "min_word_length": 2,
+            "max_word_length": 30,
+            "stop_words": ["the", "is", "at", "which"],
+            "analyzer": "standard",
+            "boost_terms": 1.2,
+            "include": false,
+            "minimum_should_match": "30%"
           },
           "fields": [
             "{field}"
