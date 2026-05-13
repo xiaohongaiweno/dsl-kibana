@@ -96,6 +96,8 @@ function normalizePath(path) {
 }
 
 function findMatchingEndpoints(api, method, path, version) {
+  // One path may match multiple Kibana endpoint patterns. We rank the matches so
+  // downstream completion logic can prefer the most specific static pattern first.
   const normalizedPath = normalizePath(path);
   const matches = [];
 
@@ -317,6 +319,9 @@ function isEscaped(text, index) {
 }
 
 function parseBodyTokenPath(bodyText, offset) {
+  // This is a lightweight streaming parser that tracks the logical JSON location
+  // at the cursor. The result is "good enough" for autocomplete even when the
+  // current body is incomplete or only partially valid.
   const stack = [];
   let inString = false;
   let currentString = '';
@@ -977,6 +982,8 @@ function getNearestExistingRuleAtPath(rule, path) {
 }
 
 function createCompiledApi(api, version) {
+  // The generated Kibana metadata is expensive to interpret repeatedly, so we
+  // compile it once per ES version into resolver-friendly component trees.
   const compiled = {
     version,
     globals: {},
@@ -1390,6 +1397,8 @@ async function getTopLevelRequestLineOverride({
   compiledApi,
   version,
 }) {
+  // If the cursor sits on a top-level line after a finished body, users are often
+  // starting the next request. We temporarily switch back to request-line rules.
   if (!request || request.isRequestLine || cursor < request.bodyStart) {
     return null;
   }
@@ -1523,4 +1532,38 @@ export function createKibanaCompletionSource(versionRef) {
       options: withCursorAwareApply(bodyCompletion.options || []),
     };
   };
+}
+
+export async function getKibanaCompletions({ text, cursor, version = 'es7' }) {
+  const source = createKibanaCompletionSource({ value: version });
+
+  return source({
+    pos: cursor,
+    state: {
+      doc: {
+        toString() {
+          return text;
+        },
+        line(number) {
+          const lines = text.split(/\r?\n/);
+          return {
+            text: lines[number - 1] || '',
+          };
+        },
+      },
+    },
+    matchBefore(regexp) {
+      const before = text.slice(0, cursor);
+      const match = before.match(regexp);
+      if (!match) {
+        return null;
+      }
+      const matchedText = match[0];
+      return {
+        from: cursor - matchedText.length,
+        to: cursor,
+        text: matchedText,
+      };
+    },
+  });
 }

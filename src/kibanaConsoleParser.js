@@ -31,6 +31,8 @@ function getLineNumberForOffset(lineStarts, offset) {
 }
 
 function computeBraceDepth(line) {
+  // We only need a lightweight structural balance check to decide whether a blank
+  // line ends the current request body, so this intentionally does not fully parse JSON.
   let depth = 0;
   let inString = false;
   let escape = false;
@@ -57,6 +59,9 @@ function computeBraceDepth(line) {
 }
 
 export function parseConsoleRequests(text) {
+  // Kibana Console allows multiple request blocks in one editor. This parser walks
+  // line by line and records the byte range for each block so later features can
+  // target "the request at the cursor" instead of the whole document.
   const normalized = text.replace(/\r\n?/g, '\n');
   const lineStarts = getLineStarts(normalized);
   const lines = normalized.split('\n');
@@ -125,6 +130,8 @@ export function parseConsoleRequests(text) {
 }
 
 export function findRequestAtOffset(parsed, offset) {
+  // Autocomplete and execution both work from cursor position, so we resolve the
+  // active request once and carry the derived request/body metadata forward.
   const request =
     parsed.requests.find(item => offset >= item.start && offset <= item.end) ||
     parsed.requests[parsed.requests.length - 1] ||
@@ -151,6 +158,7 @@ export function findRequestAtOffset(parsed, offset) {
 }
 
 export function parseRequestLine(line) {
+  // Request lines follow the Kibana Console convention: METHOD + URL [+ query string].
   const match = line.match(REQUEST_LINE_RE);
   if (!match) {
     return null;

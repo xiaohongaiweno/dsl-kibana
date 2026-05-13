@@ -5,6 +5,7 @@ export function createRequestExecutionManager() {
   function startExecution() {
     latestExecutionId += 1;
 
+    // The UI only presents one response at a time, so a newer execution always wins.
     if (activeController) {
       activeController.abort(new DOMException('Superseded by a newer request', 'AbortError'));
     }

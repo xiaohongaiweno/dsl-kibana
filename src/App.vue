@@ -1,8 +1,8 @@
 <script>
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState } from '@codemirror/state';
+import { EditorState, RangeSetBuilder, StateField } from '@codemirror/state';
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
-import { keymap } from '@codemirror/view';
+import { GutterMarker, gutter, keymap } from '@codemirror/view';
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { createKibanaCompletionSource } from './kibanaConsoleAutocomplete.js';
@@ -19,6 +19,8 @@ const DEFAULT_QUERY = `GET /_search
 }`;
 
 function createVersionRef(vm) {
+  // The completion source is created once, so it reads the active version through
+  // a small reactive wrapper instead of being re-instantiated on every toggle.
   return {
     get value() {
       return vm.activeVersion;
@@ -26,7 +28,93 @@ function createVersionRef(vm) {
   };
 }
 
-function createEditor(parent, completionSource, readonly) {
+class RequestRunMarker extends GutterMarker {
+  constructor(requestLineStart = null) {
+    super();
+    this.requestLineStart = requestLineStart;
+  }
+
+  toDOM() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'cm-request-run-button';
+    button.title = 'Execute this request';
+    button.setAttribute('aria-label', 'Execute this request');
+    button.textContent = '▶';
+    if (this.requestLineStart !== null) {
+      button.dataset.requestLineStart = String(this.requestLineStart);
+    }
+    return button;
+  }
+}
+
+const requestRunSpacerMarker = new RequestRunMarker();
+
+function buildRequestRunMarkers(doc) {
+  const builder = new RangeSetBuilder();
+  const parsed = parseConsoleRequests(doc.toString());
+
+  for (const request of parsed.requests) {
+    builder.add(request.requestLineStart, request.requestLineStart, new RequestRunMarker(request.requestLineStart));
+  }
+
+  return builder.finish();
+}
+
+const requestRunMarkerField = StateField.define({
+  create(state) {
+    return buildRequestRunMarkers(state.doc);
+  },
+  update(markers, transaction) {
+    if (!transaction.docChanged) {
+      return markers;
+    }
+    return buildRequestRunMarkers(transaction.state.doc);
+  },
+});
+
+function createRequestRunGutter(onRunRequest) {
+  return [
+    requestRunMarkerField,
+    gutter({
+      class: 'cm-request-run-gutter',
+      markers(view) {
+        return view.state.field(requestRunMarkerField);
+      },
+      initialSpacer() {
+        return requestRunSpacerMarker;
+      },
+      domEventHandlers: {
+        click(view, line, event) {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) {
+            return false;
+          }
+
+          const button = target.closest('.cm-request-run-button');
+          if (!button) {
+            return false;
+          }
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          const requestLineStart = Number(button.dataset.requestLineStart);
+          if (Number.isNaN(requestLineStart)) {
+            return false;
+          }
+
+          onRunRequest(requestLineStart);
+          return true;
+        },
+      },
+    }),
+  ];
+}
+
+function createEditor(parent, completionSource, readonly, onRunRequest) {
+  // Both panes are CodeMirror instances so the response view can reuse the same
+  // theming and JSON presentation logic while remaining read-only.
   const extensions = [
     basicSetup,
     oneDark,
@@ -40,6 +128,25 @@ function createEditor(parent, completionSource, readonly) {
       '.cm-gutters': { backgroundColor: '#11161d', border: 'none', color: '#5f7085' },
       '.cm-activeLine': { backgroundColor: 'rgba(110, 168, 255, 0.08)' },
       '.cm-activeLineGutter': { backgroundColor: 'transparent' },
+      '.cm-request-run-gutter': { width: '38px' },
+      '.cm-request-run-button': {
+        width: '24px',
+        height: '24px',
+        padding: '0',
+        border: '1px solid rgba(120, 166, 255, 0.2)',
+        borderRadius: '999px',
+        background: 'rgba(120, 166, 255, 0.08)',
+        color: '#9ec0ff',
+        cursor: 'pointer',
+        fontSize: '11px',
+        lineHeight: '1',
+        transition: 'transform 120ms ease, border-color 120ms ease, background-color 120ms ease',
+      },
+      '.cm-request-run-button:hover': {
+        transform: 'translateX(1px)',
+        borderColor: 'rgba(120, 166, 255, 0.44)',
+        background: 'rgba(120, 166, 255, 0.16)',
+      },
       '.cm-tooltip-autocomplete': {
         border: '1px solid rgba(255,255,255,0.08)',
         backgroundColor: '#0d131a',
@@ -52,6 +159,7 @@ function createEditor(parent, completionSource, readonly) {
     extensions.push(EditorState.readOnly.of(true));
   } else {
     extensions.push(EditorView.contentAttributes.of({ spellcheck: 'false' }));
+    extensions.push(createRequestRunGutter(onRunRequest));
   }
 
   return new EditorView({
@@ -64,6 +172,8 @@ function createEditor(parent, completionSource, readonly) {
 }
 
 function mergeAbortSignals(signals) {
+  // A request can end because the user started a newer run or because we hit the
+  // client-side timeout. Merging signals keeps the fetch call simple.
   const controller = new AbortController();
   const activeSignals = signals.filter(Boolean);
 
@@ -115,7 +225,9 @@ export default {
     this.completionSource = createKibanaCompletionSource(createVersionRef(this));
 
     if (this.$refs.editorRef) {
-      this.editorView = createEditor(this.$refs.editorRef, this.completionSource, false);
+      this.editorView = createEditor(this.$refs.editorRef, this.completionSource, false, lineStart => {
+        this.executeQuery({ requestLineStart: lineStart });
+      });
     }
     if (this.$refs.resultRef) {
       this.resultView = createEditor(this.$refs.resultRef, this.completionSource, true);
@@ -140,12 +252,24 @@ export default {
       });
     },
 
-    getCurrentRequestBlock() {
+    getRequestBlock(target = {}) {
       if (!this.editorView) return '';
       const docText = this.editorView.state.doc.toString();
       const parsed = parseConsoleRequests(docText);
-      const cursor = this.editorView.state.selection.main.head;
-      const request = parsed.requests.find(item => cursor >= item.start && cursor <= item.end) || parsed.requests[0];
+      const { requestLineStart, offset } = target;
+
+      let request = null;
+      if (typeof requestLineStart === 'number') {
+        request = parsed.requests.find(item => item.requestLineStart === requestLineStart) || null;
+      }
+
+      if (!request && typeof offset === 'number') {
+        request = parsed.requests.find(item => offset >= item.start && offset <= item.end) || null;
+      }
+
+      if (!request) {
+        request = parsed.requests[0] || null;
+      }
 
       if (!request) {
         return {
@@ -160,6 +284,13 @@ export default {
         start: request.start,
         end: request.end,
       };
+    },
+
+    getCurrentRequestBlock() {
+      // Execution and formatting are scoped to the request block that currently
+      // owns the cursor, which matches Kibana Console's interaction model.
+      if (!this.editorView) return '';
+      return this.getRequestBlock({ offset: this.editorView.state.selection.main.head });
     },
 
     formatRequestBlock(requestText) {
@@ -178,9 +309,10 @@ export default {
       }
     },
 
-    normalizeCurrentRequestBlock() {
-      if (!this.editorView) return '';
-      const requestBlock = this.getCurrentRequestBlock();
+    normalizeRequestBlock(requestBlock, selectionAnchor = null) {
+      if (!this.editorView || !requestBlock) return '';
+      // Normalization only rewrites the active block so multi-request documents
+      // keep surrounding requests untouched.
       const formatted = this.formatRequestBlock(requestBlock.text);
 
       if (formatted !== requestBlock.text) {
@@ -190,12 +322,23 @@ export default {
             to: requestBlock.end,
             insert: formatted,
           },
-          selection: { anchor: requestBlock.start + formatted.length },
+          selection: { anchor: selectionAnchor === null ? requestBlock.start + formatted.length : selectionAnchor },
           scrollIntoView: true,
         });
       }
 
-      return formatted.trim();
+      return {
+        text: formatted.trim(),
+        start: requestBlock.start,
+        end: requestBlock.start + formatted.length,
+      };
+    },
+
+    normalizeCurrentRequestBlock() {
+      if (!this.editorView) return '';
+      const requestBlock = this.getCurrentRequestBlock();
+      const normalized = this.normalizeRequestBlock(requestBlock);
+      return normalized ? normalized.text : '';
     },
 
     formatCurrentRequest() {
@@ -205,15 +348,26 @@ export default {
       }
     },
 
-    async executeQuery() {
-      if (this.isLoading) {
+    async executeQuery(target = {}) {
+      const requestBlock =
+        typeof target.requestLineStart === 'number'
+          ? this.getRequestBlock({ requestLineStart: target.requestLineStart })
+          : this.getCurrentRequestBlock();
+
+      if (!requestBlock || !requestBlock.text) {
+        this.error = 'Request cannot be empty';
         return;
       }
 
-      const requestText = this.normalizeCurrentRequestBlock();
+      const normalizedRequest = this.normalizeRequestBlock(requestBlock, requestBlock.start);
+      const requestText = normalizedRequest ? normalizedRequest.text : '';
       if (!requestText) {
         this.error = 'Request cannot be empty';
         return;
+      }
+
+      if (this.editorView) {
+        this.editorView.focus();
       }
 
       const lines = requestText.split(/\r?\n/);
@@ -240,6 +394,8 @@ export default {
       }, REQUEST_TIMEOUT_MS);
 
       try {
+        // The component talks directly to Elasticsearch so the UI remains a thin
+        // console client; request parsing and concurrency control stay local.
         const response = await fetch(url, {
           method: requestMeta.method,
           headers: {
@@ -347,12 +503,9 @@ export default {
           <button class="format-btn" @click="formatCurrentRequest" :disabled="isLoading">
             Format Current Request
           </button>
-          <button class="execute-btn" @click="executeQuery" :disabled="isLoading">
-            {{ isLoading ? 'Executing...' : 'Execute Current Request' }}
-          </button>
         </div>
         <div class="control-note">
-          Write requests in Kibana style: `GET /index/_search` followed by JSON body.
+          Write one or more Kibana-style requests. Click the triangle beside a block to execute it.
         </div>
       </div>
 
@@ -364,7 +517,8 @@ export default {
               <span class="panel-subtitle">{{ versionLabel }}</span>
             </div>
             <div class="panel-hint">
-              <span>`Ctrl+Enter` executes the current request block</span>
+              <span>Each DSL block has its own run trigger</span>
+              <span>`Ctrl+Enter` still executes the current request block</span>
             </div>
           </div>
           <div ref="editorRef" class="editor-container"></div>
@@ -573,8 +727,7 @@ body,
   gap: 10px;
 }
 
-.format-btn,
-.execute-btn {
+.format-btn {
   border: 1px solid transparent;
   border-radius: 12px;
   font: inherit;
@@ -588,15 +741,7 @@ body,
   color: var(--text);
 }
 
-.execute-btn {
-  padding: 12px 18px;
-  background: linear-gradient(135deg, #78a6ff, #8fd5ff);
-  color: #091018;
-  font-weight: 700;
-}
-
-.format-btn:disabled,
-.execute-btn:disabled {
+.format-btn:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
