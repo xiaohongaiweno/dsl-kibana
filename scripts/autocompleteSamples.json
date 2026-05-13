@@ -564,6 +564,24 @@
     "mustInclude": ["_all", "current_watches", "queued_watches"]
   },
   {
+    "name": "multi request second block method prefix",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"match_all\": {}\n  }\n}\nP",
+    "cursor": 57,
+    "expectFrom": 56,
+    "mustInclude": ["POST", "PUT"],
+    "mustExclude": ["GET"]
+  },
+  {
+    "name": "multi request second block completed method without path",
+    "version": "es7",
+    "text": "GET /_search\n{\n  \"query\": {\n    \"match_all\": {}\n  }\n}\nPOST",
+    "cursor": 60,
+    "expectFrom": 56,
+    "mustInclude": ["POST"],
+    "mustExclude": ["GET"]
+  },
+  {
     "name": "multi request second block",
     "version": "es7",
     "text": "GET /_search\n{}\n\nPOST /_search\n{\n  ",

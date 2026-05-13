@@ -199,6 +199,21 @@ function getCurrentLineInfo(context) {
   };
 }
 
+function getLineInfoFromText(text, cursor) {
+  const lineStart = text.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
+  const lineEndIndex = text.indexOf('\n', cursor);
+  const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+  const lineText = text.slice(lineStart, lineEnd);
+  const beforeCursor = text.slice(lineStart, cursor);
+
+  return {
+    lineStart,
+    lineEnd,
+    lineText,
+    beforeCursor,
+  };
+}
+
 function getBodyCompletionValidFor() {
   return /^[^"{}\[\],:\n\r]*$/;
 }
@@ -1368,6 +1383,45 @@ async function getRequestLinePathCompletions({
   };
 }
 
+async function getTopLevelRequestLineOverride({
+  text,
+  cursor,
+  request,
+  compiledApi,
+  version,
+}) {
+  if (!request || request.isRequestLine || cursor < request.bodyStart) {
+    return null;
+  }
+
+  const lineInfo = getLineInfoFromText(text, cursor);
+  const bodyOffsetAtLineStart = Math.max(0, lineInfo.lineStart - request.bodyStart);
+  const bodyStateAtLineStart = parseBodyTokenPath(request.bodyText, bodyOffsetAtLineStart);
+
+  if (bodyStateAtLineStart.nestingDepth > 0) {
+    return null;
+  }
+
+  const parsedLine = parseRequestLineForCompletion(lineInfo.lineText);
+  if (parsedLine && lineInfo.lineText.includes(' ')) {
+    return getRequestLinePathCompletions({
+      compiledApi,
+      method: parsedLine.method,
+      rawPath: parsedLine.rawPath,
+      version,
+      fallbackFrom: lineInfo.lineStart + lineInfo.lineText.indexOf(' ') + 1,
+    });
+  }
+
+  if (!/^\s*[A-Za-z]*$/.test(lineInfo.beforeCursor)) {
+    return null;
+  }
+
+  const prefixMatch = lineInfo.beforeCursor.match(/[A-Za-z]+$/);
+  const prefix = prefixMatch ? prefixMatch[0] : '';
+  return getMethodCompletionResult(cursor - prefix.length, prefix);
+}
+
 export function createKibanaCompletionSource(versionRef) {
   return async context => {
     const docText = context.state.doc.toString();
@@ -1393,6 +1447,17 @@ export function createKibanaCompletionSource(versionRef) {
     }
 
     request.version = version;
+
+    const requestLineOverride = await getTopLevelRequestLineOverride({
+      text: docText,
+      cursor: context.pos,
+      request,
+      compiledApi,
+      version,
+    });
+    if (requestLineOverride) {
+      return requestLineOverride;
+    }
 
     if (request.isRequestLine) {
       const lineText = context.state.doc.line(request.requestLineNumber).text;
@@ -1458,116 +1523,4 @@ export function createKibanaCompletionSource(versionRef) {
       options: withCursorAwareApply(bodyCompletion.options || []),
     };
   };
-}
-
-export async function getKibanaCompletions({
-  text,
-  cursor,
-  version = 'es7',
-}) {
-  const parsed = parseConsoleRequests(text);
-  const request = findRequestAtOffset(parsed, cursor);
-  const compiledApi = getCompiledApi(version);
-
-  const buildResponse = (from, options) => ({
-    from,
-    options: options || [],
-  });
-
-  if (!request) {
-    const looseRequestLine = getLooseRequestLineInfo(text, cursor);
-    if (looseRequestLine) {
-      return getRequestLinePathCompletions({
-        compiledApi,
-        method: looseRequestLine.parsedLine.method,
-        rawPath: looseRequestLine.parsedLine.rawPath,
-        version,
-        fallbackFrom: looseRequestLine.lineStart + looseRequestLine.lineText.indexOf(' ') + 1,
-      });
-    }
-
-    const prefixMatch = text.slice(0, cursor).match(/[\w./{}\-]+$/);
-    const prefix = prefixMatch ? prefixMatch[0] : '';
-    return getMethodCompletionResult(cursor - prefix.length, prefix);
-  }
-
-  request.version = version;
-
-  if (request.isRequestLine) {
-    const lineText = parsed.text.slice(request.requestLineStart, request.requestLineEnd);
-    const parsedLine = parseRequestLineForCompletion(lineText);
-    const currentPrefixMatch = parsed.text
-      .slice(request.requestLineStart, cursor)
-      .match(/[\w./{}\-]+$/);
-    const prefix = currentPrefixMatch ? currentPrefixMatch[0] : '';
-
-    if (!parsedLine || !lineText.includes(' ') || cursor < request.requestLineStart + lineText.indexOf(' ')) {
-      return getMethodCompletionResult(cursor - prefix.length, prefix);
-    }
-
-    if (parsedLine.rawPath.includes('?')) {
-      const beforeCursor = parsed.text.slice(request.requestLineStart, cursor);
-      const lastSegment = beforeCursor.split(/[?&]/).pop() || '';
-      if (lastSegment.includes('=')) {
-        const paramName = extractLastUrlParamName(beforeCursor);
-        const valuePrefix = lastSegment.split('=').pop() || '';
-        return buildResponse(
-          cursor - valuePrefix.length,
-          filterOptions(
-            getUrlParamValueOptions(compiledApi, { ...request, ...parsedLine }, paramName, version),
-            valuePrefix
-          )
-        );
-      }
-
-      return buildResponse(
-        cursor - lastSegment.length,
-        filterOptions(getUrlParamOptions(compiledApi, { ...request, ...parsedLine }, version), lastSegment).map(
-          option => ({
-            ...option,
-            apply: `${option.label}=`,
-          })
-        )
-      );
-    }
-
-    const matching = findMatchingEndpoints(compiledApi, parsedLine.method, parsedLine.path, version);
-    const placeholderName = matching.length ? getPathPlaceholderInfo(matching[0][1], parsedLine.rawPath) : null;
-    if (placeholderName) {
-      const suggestions = getUrlComponentSuggestions(matching[0][1], placeholderName);
-      if (suggestions.length) {
-        const segmentPrefix = getLastPathSegmentPrefix(parsedLine.rawPath);
-        return buildResponse(cursor - segmentPrefix.length, filterOptions(suggestions, segmentPrefix));
-      }
-    }
-
-    return getRequestLinePathCompletions({
-      compiledApi,
-      method: parsedLine.method,
-      rawPath: parsedLine.rawPath,
-      version,
-      fallbackFrom: request.requestLineStart + lineText.indexOf(' ') + 1,
-    });
-  }
-
-  const fakeContext = {
-    pos: cursor,
-    state: {
-      doc: {
-        toString: () => parsed.text,
-      },
-    },
-    matchBefore(re) {
-      const prefix = parsed.text.slice(0, cursor);
-      const match = prefix.match(new RegExp(`${re.source}$`, re.flags));
-      if (!match) return null;
-      return {
-        from: cursor - match[0].length,
-        to: cursor,
-        text: match[0],
-      };
-    },
-  };
-
-  return getBodyCompletion(fakeContext, compiledApi, request);
 }
