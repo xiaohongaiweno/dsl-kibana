@@ -342,19 +342,6 @@ export default {
     </header>
 
     <main class="main">
-      <section class="editor-panel">
-        <div class="panel-header">
-          <div>
-            <span class="panel-title">Request</span>
-            <span class="panel-subtitle">{{ versionLabel }}</span>
-          </div>
-          <div class="panel-hint">
-            <span>`Ctrl+Enter` executes the current request block</span>
-          </div>
-        </div>
-        <div ref="editorRef" class="editor-container"></div>
-      </section>
-
       <div class="control-bar">
         <div class="control-actions">
           <button class="format-btn" @click="formatCurrentRequest" :disabled="isLoading">
@@ -369,21 +356,36 @@ export default {
         </div>
       </div>
 
-      <section class="result-panel">
-        <div class="panel-header">
-          <div class="result-heading">
-            <span class="panel-title">Response</span>
-            <div v-if="statusCode !== null" class="result-meta">
-              <span :class="['status', statusCode < 400 ? 'success' : 'error']">
-                {{ statusCode }}
-              </span>
-              <span class="time">{{ responseTime }}ms</span>
+      <div class="workspace">
+        <section class="editor-panel">
+          <div class="panel-header">
+            <div>
+              <span class="panel-title">Request</span>
+              <span class="panel-subtitle">{{ versionLabel }}</span>
+            </div>
+            <div class="panel-hint">
+              <span>`Ctrl+Enter` executes the current request block</span>
             </div>
           </div>
-        </div>
-        <div ref="resultRef" class="editor-container"></div>
-        <div v-if="error" class="error-message">{{ error }}</div>
-      </section>
+          <div ref="editorRef" class="editor-container"></div>
+        </section>
+
+        <section class="result-panel">
+          <div class="panel-header">
+            <div class="result-heading">
+              <span class="panel-title">Response</span>
+              <div v-if="statusCode !== null" class="result-meta">
+                <span :class="['status', statusCode < 400 ? 'success' : 'error']">
+                  {{ statusCode }}
+                </span>
+                <span class="time">{{ responseTime }}ms</span>
+              </div>
+            </div>
+          </div>
+          <div ref="resultRef" class="editor-container"></div>
+          <div v-if="error" class="error-message">{{ error }}</div>
+        </section>
+      </div>
     </main>
   </div>
 </template>
@@ -490,10 +492,18 @@ body,
 
 .main {
   flex: 1;
-  display: grid;
-  grid-template-rows: minmax(280px, 1fr) auto minmax(220px, 0.9fr);
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   padding: 18px;
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
 }
 
 .editor-panel,
@@ -626,8 +636,8 @@ body,
     align-items: flex-start;
   }
 
-  .main {
-    grid-template-rows: minmax(260px, 1fr) auto minmax(220px, 0.95fr);
+  .workspace {
+    grid-template-columns: 1fr;
   }
 }
 </style>
