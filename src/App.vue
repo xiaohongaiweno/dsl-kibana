@@ -7,7 +7,6 @@ import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { createKibanaCompletionSource } from './kibanaConsoleAutocomplete.js';
 import { parseConsoleRequests, parseRequestLine } from './kibanaConsoleParser.js';
-import { createEsMetadataService } from './esMetadataService.js';
 import { createRequestExecutionManager } from './requestExecution.js';
 
 const ES_HOST = 'http://localhost:9200';
@@ -89,22 +88,18 @@ export default {
   name: 'App',
 
   data() {
-    const metadataService = createEsMetadataService(ES_HOST);
     const requestExecution = createRequestExecutionManager();
 
     return {
-      metadataService,
       requestExecution,
       editorView: null,
       resultView: null,
-      unsubscribeMetadata: null,
       completionSource: null,
       isLoading: false,
       error: '',
       responseTime: 0,
       statusCode: null,
       activeVersion: 'es7',
-      metadataStatus: metadataService.getStatus(),
     };
   },
 
@@ -114,30 +109,10 @@ export default {
       if (this.activeVersion === 'es8') return 'ES 8 rules';
       return 'ES 7 rules';
     },
-
-    metadataBadge() {
-      if (this.metadataStatus.state === 'loading') {
-        return this.metadataStatus.stale ? 'Metadata stale' : 'Loading metadata';
-      }
-      if (this.metadataStatus.state === 'stale') {
-        return 'Metadata stale';
-      }
-      if (this.metadataStatus.state === 'error') {
-        return 'Metadata unavailable';
-      }
-      if (this.metadataStatus.state === 'ready') {
-        return 'Metadata ready';
-      }
-      return 'Metadata idle';
-    },
   },
 
   mounted() {
-    this.completionSource = createKibanaCompletionSource(createVersionRef(this), this.metadataService);
-    this.unsubscribeMetadata = this.metadataService.subscribe(nextStatus => {
-      this.metadataStatus = nextStatus;
-    });
-    this.metadataService.refresh().catch(() => {});
+    this.completionSource = createKibanaCompletionSource(createVersionRef(this));
 
     if (this.$refs.editorRef) {
       this.editorView = createEditor(this.$refs.editorRef, this.completionSource, false);
@@ -148,9 +123,6 @@ export default {
   },
 
   beforeDestroy() {
-    if (this.unsubscribeMetadata) {
-      this.unsubscribeMetadata();
-    }
     this.requestExecution.cancelActive();
     if (this.editorView) {
       this.editorView.destroy();
@@ -378,7 +350,6 @@ export default {
           </div>
           <div class="panel-hint">
             <span>`Ctrl+Enter` executes the current request block</span>
-            <span class="metadata-badge" :class="metadataStatus.state">{{ metadataBadge }}</span>
           </div>
         </div>
         <div ref="editorRef" class="editor-container"></div>
@@ -567,26 +538,6 @@ body,
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.metadata-badge {
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.metadata-badge.ready {
-  color: var(--success);
-}
-
-.metadata-badge.loading,
-.metadata-badge.stale {
-  color: var(--accent-warm);
-}
-
-.metadata-badge.error {
-  color: var(--error);
 }
 
 .editor-container {

@@ -779,50 +779,13 @@ function createParametrizedComponent(value, compilingContext, template) {
 
   let component;
   if (name === 'index' || name === 'indices') {
-    component = new ListComponent(
-      name,
-      context => context.metadataService?.getIndices?.(true) || ['INDEX'],
-      null,
-      name === 'indices',
-      true,
-      'index'
-    );
+    component = new ListComponent(name, ['INDEX'], null, name === 'indices', true, 'index');
   } else if (name === 'field' || name === 'fields') {
-    component = new ListComponent(
-      name,
-      async context => {
-        const fields = await context.metadataService?.getFields?.(context.indices || []);
-        return (fields || []).map(field => ({ name: field.name, meta: field.type || 'field' }));
-      },
-      null,
-      name === 'fields',
-      true,
-      'field'
-    );
+    component = new ListComponent(name, ['FIELD'], null, name === 'fields', true, 'field');
   } else if (name === 'type' || name === 'types') {
-    component = new ListComponent(
-      name,
-      async context => {
-        const types = await context.metadataService?.getTypes?.(context.indices || []);
-        return (types || []).map(type => ({ name: type, meta: 'type' }));
-      },
-      null,
-      name === 'types',
-      true,
-      'type'
-    );
+    component = new ListComponent(name, ['TYPE'], null, name === 'types', true, 'type');
   } else if (name === 'template') {
-    component = new ListComponent(
-      name,
-      async context => {
-        const templates = await context.metadataService?.getTemplates?.();
-        return (templates || []).map(item => ({ name: item, meta: 'template' }));
-      },
-      null,
-      true,
-      true,
-      'template'
-    );
+    component = new ListComponent(name, ['TEMPLATE'], null, true, true, 'template');
   } else if (name === 'node' || name === 'nodes') {
     component = new ListComponent(
       name,
@@ -1077,7 +1040,7 @@ async function populateContextAsync(tokenPath, context, editor, includeAutoCompl
   }
 }
 
-async function getBodyCompletion(context, api, request, metadataService) {
+async function getBodyCompletion(context, api, request) {
   const bodyOffset = Math.max(0, context.pos - request.bodyStart);
   const bodyState = parseBodyTokenPath(request.bodyText, bodyOffset);
   const matching = findMatchingEndpoints(api, request.method, request.path, request.version);
@@ -1089,7 +1052,6 @@ async function getBodyCompletion(context, api, request, metadataService) {
     method: request.method,
     requestStartRow: request.requestLineNumber,
     otherTokenValues: bodyState.otherTokenValues,
-    metadataService,
     endpointComponentResolver(name) {
       return api.endpoints[name]?.compiledBody || [];
     },
@@ -1220,27 +1182,6 @@ function getUrlComponentSuggestions(endpoint, segmentName) {
   return [];
 }
 
-async function getDynamicPathSuggestions(segmentName, metadataService) {
-  if (!metadataService) return [];
-
-  if (segmentName === 'index' || segmentName === 'indices') {
-    const indices = await metadataService.getIndices(true);
-    return indices.map(label => ({ label, type: 'constant', detail: 'index' }));
-  }
-
-  if (segmentName === 'type' || segmentName === 'types') {
-    const types = await metadataService.getTypes([]);
-    return types.map(label => ({ label, type: 'constant', detail: 'type' }));
-  }
-
-  if (segmentName === 'template') {
-    const templates = await metadataService.getTemplates();
-    return templates.map(label => ({ label, type: 'constant', detail: 'template' }));
-  }
-
-  return [];
-}
-
 function getPathPlaceholderInfo(endpoint, rawPath) {
   const normalized = normalizePath(rawPath);
   for (const pattern of endpoint.patterns || []) {
@@ -1327,7 +1268,7 @@ function buildStaticPathSuffix(patternSegments, startIndex) {
   return suffixSegments.length ? suffixSegments.join('/') : null;
 }
 
-async function getPathSegmentOptions(api, method, rawPath, version, metadataService) {
+async function getPathSegmentOptions(api, method, rawPath, version) {
   const context = parsePathCompletionContext(rawPath);
   if (context.fixedSegments.length === 0) {
     return {
@@ -1375,10 +1316,7 @@ async function getPathSegmentOptions(api, method, rawPath, version, metadataServ
 
       if (/^\{[^}]+\}$/.test(currentPatternSegment)) {
         const placeholderName = currentPatternSegment.slice(1, -1);
-        let dynamicOptions = getUrlComponentSuggestions(endpoint, placeholderName);
-        if (!dynamicOptions.length) {
-          dynamicOptions = await getDynamicPathSuggestions(placeholderName, metadataService);
-        }
+        const dynamicOptions = getUrlComponentSuggestions(endpoint, placeholderName);
         suggestions.push(
           ...dynamicOptions.map(option => ({
             ...option,
@@ -1414,16 +1352,9 @@ async function getRequestLinePathCompletions({
   method,
   rawPath,
   version,
-  metadataService,
   fallbackFrom,
 }) {
-  const pathSegmentCompletion = await getPathSegmentOptions(
-    compiledApi,
-    method,
-    rawPath,
-    version,
-    metadataService
-  );
+  const pathSegmentCompletion = await getPathSegmentOptions(compiledApi, method, rawPath, version);
   if (pathSegmentCompletion.options.length) {
     return {
       from: fallbackFrom + rawPath.length - pathSegmentCompletion.fromOffset,
@@ -1437,7 +1368,7 @@ async function getRequestLinePathCompletions({
   };
 }
 
-export function createKibanaCompletionSource(versionRef, metadataService) {
+export function createKibanaCompletionSource(versionRef) {
   return async context => {
     const docText = context.state.doc.toString();
     const parsed = parseConsoleRequests(docText);
@@ -1453,7 +1384,6 @@ export function createKibanaCompletionSource(versionRef, metadataService) {
           method: looseRequestLine.parsedLine.method,
           rawPath: looseRequestLine.parsedLine.rawPath,
           version,
-          metadataService,
           fallbackFrom: looseRequestLine.lineStart + looseRequestLine.lineText.indexOf(' ') + 1,
         });
       }
@@ -1503,10 +1433,7 @@ export function createKibanaCompletionSource(versionRef, metadataService) {
       const matching = findMatchingEndpoints(compiledApi, parsedLine.method, parsedLine.path, version);
       const placeholderName = matching.length ? getPathPlaceholderInfo(matching[0][1], parsedLine.rawPath) : null;
       if (placeholderName) {
-        let suggestions = getUrlComponentSuggestions(matching[0][1], placeholderName);
-        if (!suggestions.length) {
-          suggestions = await getDynamicPathSuggestions(placeholderName, metadataService);
-        }
+        const suggestions = getUrlComponentSuggestions(matching[0][1], placeholderName);
         if (suggestions.length) {
           const segmentPrefix = getLastPathSegmentPrefix(parsedLine.rawPath);
           return {
@@ -1521,12 +1448,11 @@ export function createKibanaCompletionSource(versionRef, metadataService) {
         method: parsedLine.method,
         rawPath: parsedLine.rawPath,
         version,
-        metadataService,
         fallbackFrom: request.requestLineStart + lineText.indexOf(' ') + 1,
       });
     }
 
-    const bodyCompletion = await getBodyCompletion(context, compiledApi, request, metadataService);
+    const bodyCompletion = await getBodyCompletion(context, compiledApi, request);
     return {
       ...bodyCompletion,
       options: withCursorAwareApply(bodyCompletion.options || []),
@@ -1538,7 +1464,6 @@ export async function getKibanaCompletions({
   text,
   cursor,
   version = 'es7',
-  metadataService = null,
 }) {
   const parsed = parseConsoleRequests(text);
   const request = findRequestAtOffset(parsed, cursor);
@@ -1557,7 +1482,6 @@ export async function getKibanaCompletions({
         method: looseRequestLine.parsedLine.method,
         rawPath: looseRequestLine.parsedLine.rawPath,
         version,
-        metadataService,
         fallbackFrom: looseRequestLine.lineStart + looseRequestLine.lineText.indexOf(' ') + 1,
       });
     }
@@ -1610,10 +1534,7 @@ export async function getKibanaCompletions({
     const matching = findMatchingEndpoints(compiledApi, parsedLine.method, parsedLine.path, version);
     const placeholderName = matching.length ? getPathPlaceholderInfo(matching[0][1], parsedLine.rawPath) : null;
     if (placeholderName) {
-      let suggestions = getUrlComponentSuggestions(matching[0][1], placeholderName);
-      if (!suggestions.length) {
-        suggestions = await getDynamicPathSuggestions(placeholderName, metadataService);
-      }
+      const suggestions = getUrlComponentSuggestions(matching[0][1], placeholderName);
       if (suggestions.length) {
         const segmentPrefix = getLastPathSegmentPrefix(parsedLine.rawPath);
         return buildResponse(cursor - segmentPrefix.length, filterOptions(suggestions, segmentPrefix));
@@ -1625,7 +1546,6 @@ export async function getKibanaCompletions({
       method: parsedLine.method,
       rawPath: parsedLine.rawPath,
       version,
-      metadataService,
       fallbackFrom: request.requestLineStart + lineText.indexOf(' ') + 1,
     });
   }
@@ -1649,5 +1569,5 @@ export async function getKibanaCompletions({
     },
   };
 
-  return getBodyCompletion(fakeContext, compiledApi, request, metadataService);
+  return getBodyCompletion(fakeContext, compiledApi, request);
 }
