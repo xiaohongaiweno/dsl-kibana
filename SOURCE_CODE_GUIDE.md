@@ -2,53 +2,57 @@
 
 ## 1. 项目定位
 
-`dsl-kibana` 是一个基于 `Vue 2.5.2`、`Vite` 和 `CodeMirror 6` 实现的轻量前端控制台，用来模拟 Kibana Console 的核心体验：
+`dsl-kibana` 是一个基于 `Vue 2.5.2`、`Vite 2` 和 `CodeMirror 6` 的轻量前端控制台，用来复刻 Kibana Console 的核心交互体验：
 
-- 在单编辑器中编写 Elasticsearch 请求块
-- 按 Kibana 风格对请求行和 JSON Body 做自动补全
+- 在一个编辑器里书写多个 Elasticsearch 请求块
+- 按 Kibana Console 的风格补全请求方法、路径、查询参数和 Body
 - 直接向本地 Elasticsearch 发送请求并展示响应
-- 按 ES6 / ES7 / ES8 切换不同版本的接口补全规则
+- 按 `es6` / `es7` / `es8` 切换不同版本的补全规则
 
-这个项目的重点不在服务端，而在“编辑体验”和“补全规则编译”两部分。
+当前项目已经是一个自包含前端应用，运行时不再依赖本地 `kibana-7.6.0` 源码目录。补全规则使用仓库内已提交的 `src/kibanaConsoleData.generated.js`。
 
 ## 2. 目录结构
 
 ### 根目录关键文件
 
 - `package.json`
-  依赖、脚本和 Node 版本约束。常用脚本有 `dev`、`build`、`test`、`test:autocomplete`。
+  项目依赖、脚本和 Node 版本约束。当前要求 `Node 20.14.0`。
 - `vite.config.js`
-  Vite 配置，使用 `vite-plugin-vue2` 兼容 Vue 2.5.x。
+  Vite 配置，使用 `vite-plugin-vue2` 支持 Vue 2.5.x。
 - `README.md`
-  运行环境的简要说明。
+  启动要求与环境说明。
 - `SOURCE_CODE_GUIDE.md`
-  本文档，面向维护者说明代码结构和执行流程。
+  本文档，面向维护者介绍代码结构和关键执行流程。
 
 ### `src/` 关键文件
 
 - `main.js`
-  Vue 应用入口，负责挂载根组件。
+  Vue 应用入口，只负责挂载根组件。
 - `App.vue`
-  主界面组件，负责编辑器初始化、请求格式化、请求执行和结果展示。
+  主界面组件，负责编辑器初始化、版本切换、请求块格式化、请求执行和响应展示。
 - `kibanaConsoleParser.js`
-  把编辑器文本拆分成多个 Kibana Console 风格请求块，并根据光标定位当前请求。
+  负责把编辑器文本切分成多个 Kibana Console 风格请求块，并根据偏移量定位当前请求。
 - `kibanaConsoleAutocomplete.js`
-  自动补全核心实现，包含请求行补全、URL 参数补全、Body 路径推导、规则编译与候选生成。
+  自动补全核心实现，包含请求行补全、URL 参数补全、Body 路径推导、规则编译和候选生成。
 - `requestExecution.js`
-  管理请求并发关系，保证“最新一次执行”覆盖旧请求。
+  管理并发执行，确保“后一次执行”能取消前一次，并且旧响应不会覆盖新结果。
+- `requestExecution.test.js`
+  `requestExecution.js` 的单元测试。
 - `requestMethods.js`
-  维护请求行识别所需的 HTTP 方法和正则构造函数。
+  维护支持的 HTTP 方法集合，以及严格/宽松两类请求行正则。
 - `kibanaConsoleData.generated.js`
-  生成好的 Kibana 补全元数据，体积较大，属于数据文件，不建议手工修改。
+  生成好的 Kibana 补全元数据。它是数据产物，不建议手工修改。
 
 ### `scripts/`
 
 - `verifyAutocomplete.mjs`
-  用样例集验证自动补全输出。
-- `auditStaticSuffixEndpoints.mjs`
-  审计具有静态后缀路径的 endpoint，用于分析路径补全能力。
+  用样例集直接调用补全引擎，做回归验证。
 - `autocompleteSamples.json`
-  自动补全测试样例输入。
+  自动补全验证样例。
+- `auditStaticSuffixEndpoints.mjs`
+  分析 endpoint pattern 中“动态段后接静态多段后缀”的路径，用来观察路径补全策略。
+- `staticSuffixEndpointAudit.md`
+  审计脚本的输出文件。
 
 ## 3. 运行时主流程
 
@@ -56,48 +60,65 @@
 
 入口在 `src/main.js`：
 
-1. 导入 Vue 和根组件 `App.vue`
+1. 导入 `Vue` 和根组件 `App.vue`
 2. 创建 Vue 实例
 3. 挂载到 `#app`
 
 ### 3.2 主界面初始化
 
-`App.vue` 在 `mounted()` 中完成两件事：
+`App.vue` 在 `mounted()` 中完成初始化：
 
-1. 调用 `createKibanaCompletionSource()` 创建自动补全源
-2. 分别创建两个 CodeMirror 实例
+1. 调用 `createKibanaCompletionSource()` 创建补全源
+2. 创建左侧请求编辑器 `editorView`
+3. 创建右侧结果面板 `resultView`
 
-- 左侧 `editorView`：可编辑，请求输入区
-- 右侧 `resultView`：只读，响应结果区
+两个面板都使用 CodeMirror：
 
-版本切换不是重建补全器，而是通过 `createVersionRef()` 暴露当前 `activeVersion`，让补全逻辑在运行时读取当前版本。
+- 左侧是可编辑请求输入区
+- 右侧是只读响应展示区
 
-### 3.3 执行当前请求
+版本切换通过 `createVersionRef()` 暴露一个响应式引用，补全器初始化一次后，会在运行时读取当前的 `activeVersion`，而不是每次切换都重建整套补全逻辑。
 
-点击“Execute Current Request”或按 `Ctrl+Enter` 时，会触发 `executeQuery()`：
+### 3.3 请求块执行模型
 
-1. 调用 `normalizeCurrentRequestBlock()` 格式化当前请求块
-2. 通过 `parseRequestLine()` 校验首行是否满足 `METHOD + URL`
-3. 拼接目标 URL，默认请求 `http://localhost:9200`
-4. 调用 `requestExecution.startExecution()` 创建一次新的执行上下文
-5. 通过 `fetch()` 发送请求
-6. 将响应文本格式化为 JSON 或原始文本写入右侧结果面板
-7. 显示状态码、耗时和错误信息
+编辑器支持一份文档里包含多个请求块。每个请求块请求行左侧都会渲染一个运行按钮：
 
-并发控制的关键点：
+- 点击 gutter 中的三角按钮，会执行对应请求块
+- `Ctrl + Enter` 会执行当前光标所在请求块
+- “Format Current Request” 只格式化当前请求块，不影响其他块
 
-- 新请求启动时，旧请求会被 `AbortController` 中断
-- 只有“最新执行”的结果允许更新界面
-- 组件销毁时会主动取消未完成请求
+这套行为由 `parseConsoleRequests()` 提供请求块边界，再由 `App.vue` 中的 `getRequestBlock()`、`getCurrentRequestBlock()` 和 `normalizeRequestBlock()` 完成实际操作。
+
+### 3.4 执行请求
+
+`executeQuery()` 是主执行入口，流程如下：
+
+1. 找到目标请求块
+2. 尝试格式化该请求块中的 JSON Body
+3. 用 `parseRequestLine()` 校验首行是否满足 `METHOD + URL`
+4. 拼接目标地址，默认请求 `http://localhost:9200`
+5. 通过 `requestExecution.startExecution()` 创建新的执行上下文
+6. 创建 30 秒超时控制器
+7. 用 `fetch()` 直接向 Elasticsearch 发请求
+8. 将响应内容格式化为 JSON 或原始文本并写入右侧结果面板
+9. 更新状态码、耗时和错误信息
+
+这里有三个关键约束：
+
+- 新请求会中断旧请求
+- 只有最新一次执行允许更新 UI
+- 超时、中断和普通失败会被区分成不同错误提示
+
+`mergeAbortSignals()` 把“被新请求替代”和“超时”两类中断信号合并成一个 `fetch` 使用的 `AbortSignal`，让请求生命周期管理保持简单。
 
 ## 4. 请求解析模块
 
 文件：`src/kibanaConsoleParser.js`
 
-这个模块解决两个问题：
+这个模块是“执行当前请求块”和“在当前请求上下文补全”的共同基础。它解决两个问题：
 
-1. 一段文本中可能有多个请求块，如何切分
-2. 光标位于哪个请求块中，如何快速定位
+1. 一段文本中如何识别多个请求块
+2. 光标当前位于哪个请求块
 
 ### `parseConsoleRequests(text)`
 
@@ -106,15 +127,19 @@
 - 先统一换行符
 - 逐行扫描文本
 - 当一行满足严格请求行正则时，认为新请求开始
-- 使用 `computeBraceDepth()` 追踪 Body 中 `{}`、`[]` 的结构深度
+- 用 `computeBraceDepth()` 粗略追踪 `{}` / `[]` 的结构深度
 - 当结构深度回到 0 且遇到空行时，认为当前请求结束
 
-输出结果里会保存：
+返回结果会保存：
 
-- 请求块起止偏移
+- 全文标准化文本
+- 每一行的起始偏移
+- 每个请求块的起止位置
 - 请求行位置
-- 方法、路径、查询串
+- 请求方法、原始路径、查询串
 - Body 起止位置
+
+`computeBraceDepth()` 不是严格 JSON 解析器。它的目的只是帮助判断“空行是否意味着 Body 已经结束”，因此只做轻量结构平衡计算。
 
 ### `findRequestAtOffset(parsed, offset)`
 
@@ -122,190 +147,278 @@
 
 - 当前是否位于请求行
 - 当前请求的 Body 文本
-- 光标位于第几行
+- 光标在请求内的偏移
+- 光标所在行号
 
-这个函数是执行、格式化和自动补全的共同入口。
+### `parseRequestLine(line)`
+
+把一行请求解析成：
+
+- `method`
+- `rawPath`
+- `path`
+- `queryString`
+
+这个函数用于执行前校验，也被补全逻辑复用。
 
 ## 5. 自动补全模块
 
 文件：`src/kibanaConsoleAutocomplete.js`
 
-这是整个项目最核心、也最复杂的文件。可以按四层理解。
+这是项目最核心、最复杂的文件。可以分成五层来理解。
 
-### 5.1 第一层：输入上下文识别
+### 5.1 请求行上下文识别
 
-补全首先要判断“用户现在在补什么”：
+补全第一步是判断用户现在正在补什么：
 
-- 没有任何请求块时：提示 HTTP 方法
-- 在请求行上：提示方法、路径、路径占位符或 URL 参数
-- 在 Body 中：提示 JSON Key、字段模板或特定值
+- 还没形成请求块时，补 HTTP 方法
+- 正在输入请求行时，补方法、路径、路径段、查询参数或查询参数值
+- 位于 Body 时，补 JSON key、模板结构或特定值
 
-涉及的关键函数：
+相关函数：
 
-- `parseConsoleRequests()`
-- `findRequestAtOffset()`
+- `getCurrentWord()`
+- `parseRequestLineForCompletion()`
 - `getLooseRequestLineInfo()`
-- `parseBodyTokenPath()`
+- `getTopLevelRequestLineOverride()`
 
-其中 `parseBodyTokenPath()` 很重要。它不是完整 JSON 解析器，而是一个“面向编辑中状态”的轻量状态机，用来推导：
+这里同时存在两套请求行解析规则：
 
-- 当前位于对象还是数组
+- `createStrictRequestLineRegExp()` 用于“请求行已经成形”的解析
+- `createLooseRequestLineRegExp()` 用于“用户还在打字中”的补全
+
+这样才能在请求行尚未输入完整时持续给出路径建议。
+
+### 5.2 Body 光标路径推导
+
+Body 补全依赖 `parseBodyTokenPath(bodyText, offset)`。
+
+它不是完整 JSON parser，而是一个面向编辑态的轻量流式状态机，用来在“半成品 JSON”里推导：
+
+- 当前处于对象还是数组
 - 当前是否期待输入 key
-- 当前 JSON 路径
-- 同级数组里已经出现过哪些值
+- 当前规则路径 `rulePath`
+- 当前 token 路径 `tokenPath`
+- 同一数组中已出现过哪些 token
+- 当前嵌套深度
 
-这样即使用户正在输入半成品 JSON，也能给出较稳定的补全。
+这使得补全在 JSON 尚未闭合、字符串尚未输完的情况下仍然可用。
 
-### 5.2 第二层：Kibana 元数据编译
+### 5.3 Kibana 元数据编译
 
-补全数据来自 `kibanaConsoleData.generated.js`。原始结构偏描述性，不适合每次补全时直接遍历，因此模块启动时会执行：
+补全元数据来自 `kibanaConsoleData.generated.js`。原始结构偏描述性，不适合在每次键入时直接遍历，因此文件加载时会按 ES 版本预编译：
 
 - `createCompiledApi()`
 - `compileDescription()`
 - `compileObject()`
 - `compileList()`
+- `compileBodyDescription()`
 
-它们会把描述规则编译成一套可遍历的组件树。
-
-组件体系大致包括：
-
-- `ConstantComponent`
-  固定关键字，如某个 JSON 字段名
-- `ListComponent`
-  一组可选值，如索引名、字段名或枚举值
-- `SimpleParamComponent`
-  路径占位符，如 `{index}`、`{field}`
-- `ScopeResolver`
-  解析跨规则引用，如全局规则或其他 endpoint 的共享片段
-- `ObjectComponent`
-  组织对象内部字段和通配模式
-
-编译后的结果会缓存到：
+编译结果被缓存为：
 
 - `compiledApis.es6`
 - `compiledApis.es7`
 - `compiledApis.es8`
 
-这样切换版本时只需要切换引用，不需要重新编译大对象。
+因此版本切换时只是切换引用，不会重复编译整棵规则树。
 
-### 5.3 第三层：路径匹配和候选筛选
+### 5.4 组件树与规则解析
 
-请求行补全依赖 endpoint 匹配：
+编译后的 Body 规则会变成一组可遍历组件。重要组件包括：
 
-- `findMatchingEndpoints(api, method, path, version)`
+- `ConstantComponent`
+  固定字段或固定值
+- `ListComponent`
+  一组候选值，支持多值、去重和上下文过滤
+- `SimpleParamComponent`
+  路径或规则中的参数占位符
+- `ObjectComponent`
+  组织对象内固定字段、模式字段和通配字段
+- `ScopeResolver`
+  解析跨 endpoint 或全局规则引用
+- `ConditionalProxy`
+  处理带条件的规则
+- `GlobalOnlyComponent`
+  当找不到 endpoint 时，只使用全局规则作为兜底
 
-一个输入路径可能匹配多个模式，例如同时命中较泛和较精确的路径模板。这个函数会按以下原则排序：
+围绕这些组件，补全器会通过 `walkTokenPath()`、`populateContextAsync()` 和 `resolveTerms()` 沿当前 JSON 路径遍历规则树，并收集可见候选。
 
-- 静态段越多越优先
-- 占位符越少越优先
-- 段数更长的通常更具体
-- 规范化后的路径更长时优先级更高
+### 5.5 请求路径和查询参数补全
 
-路径补全相关函数还有：
+请求行补全的关键在 endpoint pattern 匹配。
+
+#### `findMatchingEndpoints(api, method, path, version)`
+
+一个输入路径可能匹配多个 endpoint pattern，这个函数会做排序，优先选择更具体的规则。排序依据包括：
+
+- 静态段更多
+- 占位符更少
+- 路径段更长
+- 规范化 pattern 更长
+
+#### 其他关键函数
 
 - `getEndpointPathOptions()`
+  列出某个方法下所有 endpoint 路径
 - `getPathSegmentOptions()`
+  根据当前已输入路径段补当前段
 - `getRequestLinePathCompletions()`
+  组合路径段补全和 fallback 路径补全
 - `getUrlParamOptions()`
+  补查询参数名
 - `getUrlParamValueOptions()`
+  补查询参数值
+- `getPathPlaceholderInfo()`
+  判断当前命中的 pattern 是否落在路径占位符位置
+- `getUrlComponentSuggestions()`
+  如果某个占位符有预定义枚举值，则直接给出建议
 
-它们负责分别补：
+这里还有一个比较实用的策略：
 
-- endpoint 路径
-- 当前路径段
-- 查询参数名
-- 查询参数值
+- 当 pattern 中动态段之后紧跟静态多段后缀时，补全器会尽量一次性补出整个静态后缀
 
-### 5.4 第四层：Body 自动补全
+例如它倾向于直接补出 `_validate/query` 这种完整后缀，而不是只补第一段。
 
-Body 补全由 `getBodyCompletion()` 驱动，整体步骤如下：
+### 5.6 Body 候选生成
 
-1. 通过 `parseBodyTokenPath()` 识别光标所在 JSON 位置
-2. 通过 `findMatchingEndpoints()` 找到最可能的 endpoint
-3. 获取该 endpoint 编译后的 body 规则
-4. 使用 `populateContextAsync()` 和 `walkTokenPath()` 在规则树上“走路径”
-5. 收集当前上下文下可见的候选项
-6. 结合输入前缀、缩进层级、模板插入策略生成最终补全项
+`getBodyCompletion()` 是 Body 补全主入口，流程如下：
 
-这里有几个值得注意的设计：
+1. 根据光标位置计算 `bodyOffset`
+2. 用 `parseBodyTokenPath()` 识别当前 JSON 上下文
+3. 用 `findMatchingEndpoints()` 找最匹配的 endpoint
+4. 从 endpoint 上取出 `compiledBody`
+5. 用 `populateContextAsync()` 遍历规则树并收集候选
+6. 根据当前行缩进、前缀、是否在 key 输入位等条件生成最终补全项
 
-- 允许在不完整 JSON 中补全
-- 插入对象/数组模板时，会自动处理缩进
-- 对象 key 的补全会改写整行，减少引号和冒号的手工输入
-- 若规则树没有给出直接候选，会退回到最近可解析规则节点提取字段名
+当前实现有几个值得注意的设计：
+
+- 对象 key 补全时，会直接生成 `"key": ` 结构
+- 如果规则自带模板，会拼出对象或数组模板并保留合理光标位置
+- 插入时会按当前嵌套深度处理缩进
+- 如果规则树当前节点没有直接候选，会回退到最近可解析规则节点提取字段名
+- 补全项会通过 `withCursorAwareApply()` 自定义插入行为，以便同时控制替换范围和光标位置
+
+### 5.7 对外暴露的两个入口
+
+- `createKibanaCompletionSource(versionRef)`
+  给 CodeMirror 使用的异步补全源
+- `getKibanaCompletions({ text, cursor, version })`
+  给脚本和自动化验证使用的无 UI 补全入口
+
+后者会模拟最小化编辑器上下文，因此可以在 Node 脚本中直接跑回归测试。
 
 ## 6. 请求执行模块
 
 文件：`src/requestExecution.js`
 
-这个模块很小，但很关键。它解决的是“用户快速连续点击执行”时的竞态问题。
+这个模块很小，但非常关键。它负责处理“用户连续执行多个请求”时的竞态问题。
 
 ### `createRequestExecutionManager()`
 
 返回三个核心能力：
 
 - `startExecution()`
-  启动新请求，并自动中断旧请求
+  启动新执行，并中断旧执行
 - `cancelActive()`
-  主动取消当前请求
+  主动取消当前执行
 - `getLatestExecutionId()`
-  获取当前最新执行编号
+  读取当前最新执行编号
 
-每次 `startExecution()` 都会生成新的 `executionId`。界面层通过 `isLatest()` 判断当前响应是否仍然有效，避免旧请求后返回覆盖新请求结果。
+`startExecution()` 会返回一个执行对象，其中包含：
+
+- `executionId`
+- `controller`
+- `isLatest()`
+- `release()`
+
+界面层通过 `isLatest()` 保证旧请求即使晚返回，也不会覆盖新请求的结果。
 
 ## 7. 版本兼容策略
 
-项目支持 `es6`、`es7`、`es8` 三套规则，核心差异主要体现在 endpoint pattern 兼容上。
+项目支持 `es6`、`es7`、`es8` 三套补全规则。版本兼容主要体现在 endpoint pattern 过滤和规范化上。
 
 关键函数：
 
 - `normalizePattern()`
 - `isVersionCompatiblePattern()`
 - `getVersionCompatiblePatterns()`
+- `getCompiledApi()`
 
-当前处理重点是 mapping/type 相关路径：
+当前实现重点处理的是 mapping/type 相关的历史差异：
 
-- ES6 仍保留部分 `/{type}` 风格路径
-- ES7/ES8 会移除或规避这些过时路径
+- `es6` 会保留部分 `/{type}` 风格路径
+- `es7` / `es8` 会规避或归一化这类旧路径
 
-因此同样的请求输入，在不同版本下可能看到不同的路径补全结果。
+所以同一段输入在不同版本下，可能看到不同的路径候选和 Body 规则。
 
-## 8. 测试与验证
+## 8. 脚本与测试
 
-### 单元测试
+### 8.1 单元测试
 
-`src/requestExecution.test.js` 目前覆盖：
+`src/requestExecution.test.js` 当前覆盖：
 
 - 新执行会中断旧执行
 - `cancelActive()` 会中断当前执行
 
-### 自动补全样例验证
+运行方式：
 
-`scripts/verifyAutocomplete.mjs` 会读取 `scripts/autocompleteSamples.json`，调用补全函数并检查：
+```bash
+npm test
+```
+
+### 8.2 自动补全回归验证
+
+`scripts/verifyAutocomplete.mjs` 会：
+
+1. 读取 `scripts/autocompleteSamples.json`
+2. 通过 `getKibanaCompletions()` 直接调用补全逻辑
+3. 校验候选列表是否满足样例约束
+
+样例目前可验证：
 
 - 必须出现的候选项
 - 不应出现的候选项
-- 补全替换起始位置 `from`
-- 指定候选项的元数据
+- 补全起始位置 `from`
+- 指定候选项的元数据字段
 
-这是补全回归验证的主要脚本。
+脚本里使用的是内置假数据服务，用于模拟索引、字段、type 和模板等枚举值，因此不依赖浏览器环境。
 
-## 9. 修改建议
+运行方式：
 
-后续维护时建议优先遵守以下边界：
+```bash
+npm run test:autocomplete
+```
 
-- 不直接手改 `src/kibanaConsoleData.generated.js`
-  它是生成产物，应通过上游规则或生成流程更新。
-- 修改补全逻辑时，优先补样例测试
-  自动补全属于高分支逻辑，只看界面现象不容易覆盖边界。
+### 8.3 静态后缀路径审计
+
+`scripts/auditStaticSuffixEndpoints.mjs` 会扫描生成数据中的 endpoint pattern，找出“动态段后面跟静态多段后缀”的路径，并输出到 `scripts/staticSuffixEndpointAudit.md`。
+
+这个脚本主要用来分析和调试路径补全策略，不参与运行时逻辑。
+
+运行方式：
+
+```bash
+npm run audit:static-suffix
+```
+
+## 9. 维护建议
+
+- 不要手改 `src/kibanaConsoleData.generated.js`
+  它是生成产物，应该通过上游数据源或生成流程更新。
+- 修改补全逻辑时，优先补 `autocompleteSamples.json`
+  补全逻辑分支很多，只靠手测很容易漏边界。
 - 保持解析器“轻量但稳定”
-  `kibanaConsoleParser.js` 的目标不是严格 JSON 校验，而是为编辑体验服务。
-- 把 UI 状态和补全规则分开
-  `App.vue` 应尽量只负责界面与请求生命周期，复杂语义判断继续放在独立模块中。
+  `kibanaConsoleParser.js` 的目标不是严格 JSON 校验，而是服务编辑体验和请求块识别。
+- 尽量把语义判断放在独立模块
+  `App.vue` 更适合管理 UI 和请求生命周期，不适合承载越来越多的补全规则细节。
+- 注意执行逻辑是“当前请求块粒度”
+  修改格式化、补全或运行行为时，不要误伤同文档中的其他请求块。
+- 修改版本兼容逻辑时，至少同时检查 ES6 和 ES7/ES8
+  当前很多差异都是通过 pattern 过滤和规范化间接实现的。
 
 ## 10. 建议阅读顺序
 
-第一次接手这个项目时，推荐按下面顺序阅读：
+第一次接手这个项目时，建议按下面顺序阅读：
 
 1. `src/App.vue`
 2. `src/kibanaConsoleParser.js`
@@ -313,4 +426,4 @@ Body 补全由 `getBodyCompletion()` 驱动，整体步骤如下：
 4. `src/kibanaConsoleAutocomplete.js`
 5. `scripts/verifyAutocomplete.mjs`
 
-这样先理解页面行为，再进入补全引擎，会更容易建立整体心智模型。
+这样可以先建立页面交互和请求块模型，再进入补全引擎的规则编译与路径匹配细节。

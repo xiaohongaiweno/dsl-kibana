@@ -1,19 +1,15 @@
 export const SUPPORTED_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'HEAD'];
 
-function escapeRegExp(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+export const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const buildMethodPattern = methods => methods.map(escapeRegExp).join('|');
+const createRequestLineRegExp = (methods, allowEmptyPath) =>
+  new RegExp(
+    `^\\s*(${buildMethodPattern(methods)})${allowEmptyPath ? '(?:\\s+(\\S*))?' : '\\s+(\\S+)'}(?:\\s*)$`,
+    'i'
+  );
 
-function buildMethodPattern(methods) {
-  return methods.map(escapeRegExp).join('|');
-}
+export const createStrictRequestLineRegExp = (methods = SUPPORTED_HTTP_METHODS) =>
+  createRequestLineRegExp(methods, false);
 
-export function createStrictRequestLineRegExp(methods = SUPPORTED_HTTP_METHODS) {
-  // Strict mode is used by the parser once a request line is considered complete.
-  return new RegExp(`^\\s*(${buildMethodPattern(methods)})\\s+(\\S+)(?:\\s*)$`, 'i');
-}
-
-export function createLooseRequestLineRegExp(methods = SUPPORTED_HTTP_METHODS) {
-  // Loose mode keeps autocompletion active while the user is still typing the path.
-  return new RegExp(`^\\s*(${buildMethodPattern(methods)})(?:\\s+(\\S*))?(?:\\s*)$`, 'i');
-}
+export const createLooseRequestLineRegExp = (methods = SUPPORTED_HTTP_METHODS) =>
+  createRequestLineRegExp(methods, true);
