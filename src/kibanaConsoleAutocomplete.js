@@ -16,6 +16,21 @@ import {
 const REQUEST_LINE_PREFIX_RE = createLooseRequestLineRegExp();
 const REQUEST_WORD_RE = /[\w./{}-]+/;
 
+/**
+ * 功能：
+ * 按指定键去重补全候选项，避免同一建议重复出现。
+ *
+ * 实现：
+ * 用 `Set` 记录已经输出过的键值，只保留首次出现的项；
+ * `key` 既支持传属性名，也支持传取值函数。
+ *
+ * 输入：
+ * - `items`：候选项数组。
+ * - `key`：去重键或键提取函数。
+ *
+ * 输出：
+ * - 返回去重后的新数组。
+ */
 const uniqBy = (items, key) => {
   const seen = new Set();
   return items.filter(item => {
@@ -25,7 +40,38 @@ const uniqBy = (items, key) => {
     return true;
   });
 };
+
+/**
+ * 功能：
+ * 提取光标前当前“单词”范围，供方法名、路径段等前缀补全复用。
+ *
+ * 实现：
+ * 直接委托 CodeMirror 的 `matchBefore()`，
+ * 使用适配请求场景的 `REQUEST_WORD_RE` 查找光标前最近一个 token。
+ *
+ * 输入：
+ * - `context`：CodeMirror 补全文本上下文。
+ *
+ * 输出：
+ * - 返回匹配结果对象，或 `null`。
+ */
 const getCurrentWord = context => context.matchBefore(REQUEST_WORD_RE);
+
+/**
+ * 功能：
+ * 生成 HTTP 方法补全结果。
+ *
+ * 实现：
+ * 把支持的方法列表映射成补全项，并按当前前缀做过滤；
+ * 如果没有任何前缀，则返回空候选，避免在任意位置过度打扰输入。
+ *
+ * 输入：
+ * - `from`：补全替换起点。
+ * - `prefix`：当前已输入的方法前缀。
+ *
+ * 输出：
+ * - 返回符合 CodeMirror 规范的补全结果对象。
+ */
 const getMethodCompletionResult = (from, prefix) => ({
   from,
   options:
@@ -33,6 +79,22 @@ const getMethodCompletionResult = (from, prefix) => ({
       ? filterOptions(SUPPORTED_HTTP_METHODS.map(label => ({ label, type: 'keyword', detail: 'method' })), prefix)
       : [],
 });
+
+/**
+ * 功能：
+ * 提取光标所在行的边界和前缀文本信息。
+ *
+ * 实现：
+ * 通过全文字符串和光标 offset 反查当前行起止位置，
+ * 并返回整行文本以及“光标前内容”，供请求行补全逻辑复用。
+ *
+ * 输入：
+ * - `text`：全文字符串。
+ * - `cursor`：当前光标 offset。
+ *
+ * 输出：
+ * - 返回对象 `{ lineStart, lineEnd, lineText, beforeCursor }`。
+ */
 const getTextLineInfo = (text, cursor) => {
   const lineStart = text.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
   const lineEndIndex = text.indexOf('\n', cursor);
@@ -40,12 +102,43 @@ const getTextLineInfo = (text, cursor) => {
   const beforeCursor = text.slice(lineStart, cursor);
   return { lineStart, lineEnd, lineText: text.slice(lineStart, lineEnd), beforeCursor };
 };
+
+/**
+ * 功能：
+ * 以“宽松模式”解析请求行，兼容用户尚未输入完整路径的中间态。
+ *
+ * 实现：
+ * 先尝试使用严格解析结果；
+ * 如果失败，再退回到允许空路径的前缀正则，以支持输入过程中的自动补全。
+ *
+ * 输入：
+ * - `line`：当前行文本。
+ *
+ * 输出：
+ * - 返回请求行结构化对象，或 `null`。
+ */
 const parseRequestLineForCompletion = line => {
   const exact = parseRequestLine(line);
   if (exact) return exact;
   const match = line.match(REQUEST_LINE_PREFIX_RE);
   return match ? { method: match[1].toUpperCase(), rawPath: match[2] || '', ...splitRequestPath(match[2] || '') } : null;
 };
+
+/**
+ * 功能：
+ * 在全文和光标位置基础上，推导出“可能是请求行”的补全文本上下文。
+ *
+ * 实现：
+ * 先定位当前行，再用宽松请求行解析尝试识别方法与路径；
+ * 只有当当前行已经包含空格，说明用户进入了“路径输入阶段”，才返回有效结果。
+ *
+ * 输入：
+ * - `text`：全文字符串。
+ * - `cursor`：当前光标 offset。
+ *
+ * 输出：
+ * - 返回带 `parsedLine` 的行信息对象，或 `null`。
+ */
 const getLooseRequestLineInfo = (text, cursor) => {
   const lineInfo = getTextLineInfo(text, cursor);
   const parsedLine = parseRequestLineForCompletion(lineInfo.lineText);
@@ -120,6 +213,27 @@ const buildStaticPathSuffix = (patternSegments, startIndex) => {
   }
   return suffix.length ? suffix.join('/') : null;
 };
+
+/**
+ * 功能：
+ * 为路径当前段生成候选项，包括静态段和动态占位符建议。
+ *
+ * 实现：
+ * 把用户当前输入的路径拆成“已固定段 + 当前段前缀”，
+ * 再遍历所有 endpoint pattern：
+ * - 固定段匹配时，优先给出下一个静态段；
+ * - 如果下一个段是占位符，则从元数据服务或 endpoint 配置中拉取动态建议。
+ *
+ * 输入：
+ * - `api`：当前版本编译后的 API 规则集。
+ * - `method`：HTTP 方法。
+ * - `rawPath`：当前输入中的原始路径。
+ * - `version`：规则版本。
+ * - `metadataService`：可选的动态元数据服务。
+ *
+ * 输出：
+ * - 返回对象 `{ fromOffset, prefix, options }`。
+ */
 const getPathSegmentOptions = async (api, method, rawPath, version, metadataService) => {
   const pathContext = parsePathCompletionContext(rawPath);
   if (pathContext.fixedSegments.length === 0) return { fromOffset: pathContext.pathOnly.length, prefix: pathContext.pathOnly, options: [] };
@@ -150,6 +264,26 @@ const getPathSegmentOptions = async (api, method, rawPath, version, metadataServ
   }
   return { fromOffset: pathContext.segmentPrefix.length, prefix: pathContext.segmentPrefix, options: uniqBy(filterOptions(suggestions, pathContext.segmentPrefix), 'label') };
 };
+
+/**
+ * 功能：
+ * 生成请求行路径部分的补全结果。
+ *
+ * 实现：
+ * 优先尝试“按当前路径段补全”，如果没有更细粒度的建议，
+ * 则退回到当前方法可用的 endpoint 路径列表做前缀匹配。
+ *
+ * 输入：
+ * - `compiledApi`：编译后的 API 数据。
+ * - `method`：HTTP 方法。
+ * - `rawPath`：原始路径输入。
+ * - `version`：规则版本。
+ * - `fallbackFrom`：兜底补全的替换起点。
+ * - `metadataService`：可选元数据服务。
+ *
+ * 输出：
+ * - 返回 CodeMirror 所需的补全结果对象。
+ */
 const getRequestLinePathCompletions = async ({
   compiledApi,
   method,
@@ -161,6 +295,25 @@ const getRequestLinePathCompletions = async ({
   const segmentCompletion = await getPathSegmentOptions(compiledApi, method, rawPath, version, metadataService);
   return segmentCompletion.options.length ? { from: fallbackFrom + rawPath.length - segmentCompletion.fromOffset, options: segmentCompletion.options } : { from: fallbackFrom, options: filterOptions(getEndpointPathOptions(compiledApi, method, version), rawPath) };
 };
+
+/**
+ * 功能：
+ * 在请求体顶层区域里识别“用户实际上在写下一条请求行”的场景。
+ *
+ * 实现：
+ * 当光标不在当前请求的真正 body 嵌套结构内时，
+ * 允许把当前行重新解释为请求行，从而在多请求块编辑场景里继续提供方法/路径补全。
+ *
+ * 输入：
+ * - `text`：全文字符串。
+ * - `cursor`：当前光标 offset。
+ * - `request`：当前命中的请求块。
+ * - `compiledApi`：编译后的 API 数据。
+ * - `version`：规则版本。
+ *
+ * 输出：
+ * - 返回请求行补全结果对象，或 `null`。
+ */
 const getTopLevelRequestLineOverride = async ({ text, cursor, request, compiledApi, version }) => {
   if (!request || request.isRequestLine || cursor < request.bodyStart) return null;
   const lineInfo = getTextLineInfo(text, cursor);
@@ -173,6 +326,29 @@ const getTopLevelRequestLineOverride = async ({ text, cursor, request, compiledA
   const prefix = lineInfo.beforeCursor.match(/[A-Za-z]+$/)?.[0] || '';
   return getMethodCompletionResult(cursor - prefix.length, prefix);
 };
+
+/**
+ * 功能：
+ * 计算正式请求行上的自动补全结果。
+ *
+ * 实现：
+ * 根据光标所处位置区分三类场景：
+ * - 方法补全；
+ * - 路径补全；
+ * - URL 查询参数名和值补全。
+ * 对动态路径占位符会结合 endpoint 规则和元数据服务给出更精确建议。
+ *
+ * 输入：
+ * - `context`：CodeMirror 补全文本上下文。
+ * - `docText`：全文字符串。
+ * - `request`：当前请求块。
+ * - `compiledApi`：编译后的 API 数据。
+ * - `version`：规则版本。
+ * - `metadataService`：可选元数据服务。
+ *
+ * 输出：
+ * - 返回补全结果对象。
+ */
 const getRequestLineCompletion = async ({ context, docText, request, compiledApi, version, metadataService }) => {
   const lineText = context.state.doc.line(request.requestLineNumber).text;
   const parsedLine = parseRequestLineForCompletion(lineText);
@@ -203,6 +379,25 @@ const getRequestLineCompletion = async ({ context, docText, request, compiledApi
   return getRequestLinePathCompletions({ compiledApi, method: parsedLine.method, rawPath: parsedLine.rawPath, version, fallbackFrom: pathStart, metadataService });
 };
 
+/**
+ * 功能：
+ * 创建 Kibana Console 风格的 CodeMirror 自动补全数据源。
+ *
+ * 实现：
+ * 每次触发补全时先解析全文请求块和当前光标位置，
+ * 再根据所处区域分流到：
+ * - 空白处/半成品请求行的方法补全；
+ * - 正式请求行的路径或参数补全；
+ * - 请求体中的 JSON 结构补全。
+ * 版本信息通过 `versionRef` 在运行时动态读取。
+ *
+ * 输入：
+ * - `versionRef`：带 `value` 属性的版本引用对象。
+ * - `explicitMetadataService`：可选元数据服务。
+ *
+ * 输出：
+ * - 返回一个异步补全源函数，可直接给 CodeMirror 使用。
+ */
 export const createKibanaCompletionSource = (versionRef, explicitMetadataService = null) => async context => {
   const docText = context.state.doc.toString();
   const parsed = parseConsoleRequests(docText);
@@ -232,6 +427,23 @@ export const createKibanaCompletionSource = (versionRef, explicitMetadataService
   return { ...bodyCompletion, options: withCursorAwareApply(bodyCompletion.options || []) };
 };
 
+/**
+ * 功能：
+ * 以纯函数形式暴露自动补全能力，便于测试和非编辑器场景复用。
+ *
+ * 实现：
+ * 为传入的文本和光标位置临时构造一个最小化的 CodeMirror 上下文对象，
+ * 然后复用正式补全源完成整套补全计算。
+ *
+ * 输入：
+ * - `text`：全文字符串。
+ * - `cursor`：光标 offset。
+ * - `version`：可选规则版本，默认 `es7`。
+ * - `metadataService`：可选元数据服务。
+ *
+ * 输出：
+ * - 返回一个 Promise，resolve 为补全结果对象。
+ */
 export const getKibanaCompletions = async ({ text, cursor, version = 'es7', metadataService = null }) =>
   createKibanaCompletionSource({ value: version, metadataService }, metadataService)({
     pos: cursor,

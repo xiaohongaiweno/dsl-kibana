@@ -91,3 +91,39 @@ test('es6 type path placeholder suggestions use metadataService types', async ()
   assert.ok(labels.includes('_doc'));
   assert.ok(labels.includes('legacy_type'));
 });
+
+test('invalid array body content does not trigger root object completions', async () => {
+  const text = 'POST /xiao/_search\n[qu]';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length - 1,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
+test('text after a closed array does not trigger body completions', async () => {
+  const text = 'POST /xiao/_search\n[]a';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
+test('partial invalid array token does not trigger root object completions', async () => {
+  const text = 'POST /xiao/_search\n[qu';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
