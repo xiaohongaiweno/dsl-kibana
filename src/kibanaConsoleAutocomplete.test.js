@@ -127,3 +127,17 @@ test('partial invalid array token does not trigger root object completions', asy
 
   assert.deepEqual(getLabels(result.options || []), []);
 });
+
+test('second request block still gets method completions after first body closes', async () => {
+  const text = 'GET /_search\n{}\n\nPO';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length,
+    version: 'es7',
+    metadataService,
+  });
+
+  const labels = getLabels(result.options || []);
+
+  assert.ok(labels.includes('POST'));
+});

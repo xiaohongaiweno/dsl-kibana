@@ -317,7 +317,11 @@ const getRequestLinePathCompletions = async ({
 const getTopLevelRequestLineOverride = async ({ text, cursor, request, compiledApi, version }) => {
   if (!request || request.isRequestLine || cursor < request.bodyStart) return null;
   const lineInfo = getTextLineInfo(text, cursor);
-  if (parseBodyTokenPath(request.bodyText, Math.max(0, lineInfo.lineStart - request.bodyStart)).nestingDepth > 0) return null;
+  const bodyStateAtLineStart = parseBodyTokenPath(
+    request.bodyText,
+    Math.max(0, lineInfo.lineStart - request.bodyStart)
+  );
+  if (bodyStateAtLineStart?.nestingDepth > 0) return null;
   const parsedLine = parseRequestLineForCompletion(lineInfo.lineText);
   if (parsedLine && lineInfo.lineText.includes(' ')) {
     return getRequestLinePathCompletions({ compiledApi, method: parsedLine.method, rawPath: parsedLine.rawPath, version, fallbackFrom: lineInfo.lineStart + lineInfo.lineText.indexOf(' ') + 1 });
