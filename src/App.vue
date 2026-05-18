@@ -4,7 +4,6 @@ import { EditorState, RangeSetBuilder, StateField } from '@codemirror/state';
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
 import { GutterMarker, gutter, keymap } from '@codemirror/view';
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { createKibanaCompletionSource } from './kibanaConsoleAutocomplete.js';
 import { parseConsoleRequests, parseRequestLine } from './kibanaConsoleParser.js';
 import { createRequestExecutionManager } from './requestExecution.js';
@@ -290,26 +289,25 @@ function createRequestRunGutter(onRunRequest) {
 function createEditor(parent, completionSource, readonly, onRunRequest) {
   const extensions = [
     basicSetup,
-    oneDark,
     autocompletion({ override: [completionSource], activateOnTypingDelay: 0 }),
     keymap.of([].concat(defaultKeymap, completionKeymap, [indentWithTab])),
     EditorView.lineWrapping,
     EditorView.theme({
-      '&': { height: '100%', fontSize: '14px', backgroundColor: '#11161d', color: '#d6dde8' },
+      '&': { height: '100%', fontSize: '14px', backgroundColor: '#ffffff', color: '#172033' },
       '.cm-scroller': { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" },
-      '.cm-content': { caretColor: '#93c5fd', padding: '18px 0' },
-      '.cm-gutters': { backgroundColor: '#11161d', border: 'none', color: '#5f7085' },
-      '.cm-activeLine': { backgroundColor: 'rgba(110, 168, 255, 0.08)' },
+      '.cm-content': { caretColor: '#2563eb', padding: '18px 0' },
+      '.cm-gutters': { backgroundColor: '#f8fafc', border: 'none', color: '#94a3b8' },
+      '.cm-activeLine': { backgroundColor: 'rgba(37, 99, 235, 0.06)' },
       '.cm-activeLineGutter': { backgroundColor: 'transparent' },
       '.cm-request-run-gutter': { width: '38px' },
       '.cm-request-run-button': {
         width: '24px',
         height: '24px',
         padding: '0',
-        border: '1px solid rgba(120, 166, 255, 0.2)',
+        border: '1px solid rgba(37, 99, 235, 0.18)',
         borderRadius: '999px',
-        background: 'rgba(120, 166, 255, 0.08)',
-        color: '#9ec0ff',
+        background: 'rgba(37, 99, 235, 0.08)',
+        color: '#2563eb',
         cursor: 'pointer',
         fontSize: '11px',
         lineHeight: '1',
@@ -317,13 +315,13 @@ function createEditor(parent, completionSource, readonly, onRunRequest) {
       },
       '.cm-request-run-button:hover': {
         transform: 'translateX(1px)',
-        borderColor: 'rgba(120, 166, 255, 0.44)',
-        background: 'rgba(120, 166, 255, 0.16)',
+        borderColor: 'rgba(37, 99, 235, 0.34)',
+        background: 'rgba(37, 99, 235, 0.14)',
       },
       '.cm-tooltip-autocomplete': {
-        border: '1px solid rgba(255,255,255,0.08)',
-        backgroundColor: '#0d131a',
-        color: '#d6dde8',
+        border: '1px solid rgba(148, 163, 184, 0.3)',
+        backgroundColor: '#ffffff',
+        color: '#172033',
       },
     }),
   ];
@@ -947,18 +945,18 @@ export default {
 
 <style>
 :root {
-  --bg: #091018;
-  --panel: #11161d;
-  --panel-strong: #161d26;
-  --panel-soft: #1b2430;
-  --line: rgba(255, 255, 255, 0.08);
-  --text: #d6dde8;
-  --muted: #7f90a4;
-  --accent: #78a6ff;
-  --accent-strong: #9ec0ff;
-  --accent-warm: #ffd18b;
-  --success: #7dd3a7;
-  --error: #ff9b90;
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  --panel-soft: #eef2f7;
+  --line: rgba(15, 23, 42, 0.1);
+  --text: #172033;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-warm: #b45309;
+  --success: #15803d;
+  --error: #dc2626;
 }
 
 * {
@@ -971,9 +969,9 @@ body,
   margin: 0;
   min-height: 100%;
   background:
-    radial-gradient(circle at top left, rgba(120, 166, 255, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(255, 209, 139, 0.1), transparent 24%),
-    linear-gradient(180deg, #091018 0%, #0c1219 100%);
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(251, 191, 36, 0.12), transparent 24%),
+    linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
   color: var(--text);
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
@@ -991,7 +989,7 @@ body,
   gap: 16px;
   padding: 18px 24px;
   border-bottom: 1px solid var(--line);
-  background: rgba(9, 16, 24, 0.84);
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(18px);
 }
 
@@ -1003,10 +1001,10 @@ body,
 
 .brand-mark {
   padding: 8px 12px;
-  border: 1px solid rgba(120, 166, 255, 0.36);
+  border: 1px solid rgba(37, 99, 235, 0.22);
   border-radius: 999px;
   color: var(--accent-strong);
-  background: rgba(120, 166, 255, 0.08);
+  background: rgba(37, 99, 235, 0.08);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 12px;
@@ -1041,8 +1039,8 @@ body,
 
 .version-chip.active {
   color: var(--accent-strong);
-  border-color: rgba(120, 166, 255, 0.4);
-  background: rgba(120, 166, 255, 0.12);
+  border-color: rgba(37, 99, 235, 0.3);
+  background: rgba(37, 99, 235, 0.1);
 }
 
 .main {
@@ -1069,8 +1067,8 @@ body,
   border: 1px solid var(--line);
   border-radius: 18px;
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(20, 27, 35, 0.94), rgba(14, 20, 28, 0.96));
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
 }
 
 .panel-header {
@@ -1080,7 +1078,7 @@ body,
   gap: 16px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(248, 250, 252, 0.92);
 }
 
 .panel-title {
@@ -1127,10 +1125,10 @@ body,
   width: 18px;
   height: 18px;
   margin: 0 2px;
-  border: 1px solid rgba(120, 166, 255, 0.2);
+  border: 1px solid rgba(37, 99, 235, 0.18);
   border-radius: 999px;
-  background: rgba(120, 166, 255, 0.08);
-  color: #9ec0ff;
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
   font-size: 10px;
   line-height: 1;
   vertical-align: middle;
@@ -1154,7 +1152,7 @@ body,
 
 .format-btn {
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border-color: var(--line);
   color: var(--text);
 }
@@ -1185,8 +1183,8 @@ body,
 
 .error-message {
   padding: 12px 16px;
-  border-top: 1px solid rgba(255, 155, 144, 0.2);
-  background: rgba(255, 155, 144, 0.08);
+  border-top: 1px solid rgba(220, 38, 38, 0.16);
+  background: rgba(220, 38, 38, 0.06);
   color: var(--error);
   font-size: 13px;
 }
