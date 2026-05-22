@@ -230,8 +230,9 @@ const pushContainer = (stack, pendingKey, type) => {
  */
 export const parseBodyTokenPath = (bodyText, offset) => {
   const stack = [];
-  let inString = false, currentString = '', expectingKey = false, pendingKey = null, justSawColon = false, currentLiteral = '';
+  let inString = false, currentString = '', currentStringType = null, expectingKey = false, pendingKey = null, justSawColon = false, currentLiteral = '';
   let walkedSomeBody = false;
+  let hasInvalidStructure = false;
   for (let index = 0; index < Math.min(offset, bodyText.length); index += 1) {
     const char = bodyText[index];
     if (!/\s/.test(char)) {
@@ -243,12 +244,15 @@ export const parseBodyTokenPath = (bodyText, offset) => {
         if (expectingKey) pendingKey = currentString, stack.at(-1)?.type === 'object' && stack.at(-1).tokens.push(currentString);
         else stack.at(-1)?.type === 'array' && stack.at(-1).tokens.push(currentString);
         currentString = '';
+        currentStringType = null;
       } else currentString += char;
       continue;
     }
     if (char === '"') {
       inString = true;
       currentString = '';
+      currentStringType =
+        !stack.length || stack.at(-1).type === 'object' ? (!justSawColon ? 'key' : 'value') : 'value';
       if (!stack.length || stack.at(-1).type === 'object') expectingKey = !justSawColon;
       currentLiteral = '';
       continue;
@@ -263,6 +267,12 @@ export const parseBodyTokenPath = (bodyText, offset) => {
       continue;
     }
     if (char === '}' || char === ']') {
+      const active = stack.at(-1);
+      const expectedType = char === '}' ? 'object' : 'array';
+      if (!active || active.type !== expectedType) {
+        hasInvalidStructure = true;
+        break;
+      }
       stack.pop();
       pendingKey = null;
       expectingKey = stack.at(-1)?.type === 'object';
@@ -289,7 +299,7 @@ export const parseBodyTokenPath = (bodyText, offset) => {
 
   // Match Kibana Console behavior: if we already traversed non-whitespace body content
   // but ended up outside any valid body scope, autocomplete should be suppressed.
-  if (walkedSomeBody && stack.length === 0) {
+  if (hasInvalidStructure || (walkedSomeBody && stack.length === 0)) {
     return null;
   }
 
@@ -297,7 +307,16 @@ export const parseBodyTokenPath = (bodyText, offset) => {
   const active = stack.at(-1) || { type: 'object', path: [], tokenPath: [], tokens: [] };
   const tokenPath = [...active.tokenPath];
   if (active.type === 'array' && active.tokens.length) tokenPath.push(active.tokens);
-  return { tokenPath, rulePath: [...active.path], expectingKey, otherTokenValues: active.tokens, activeType: active.type, nestingDepth: stack.length };
+  return {
+    tokenPath,
+    rulePath: [...active.path],
+    expectingKey,
+    otherTokenValues: active.tokens,
+    activeType: active.type,
+    nestingDepth: stack.length,
+    insideString: inString,
+    stringType: inString ? currentStringType : null,
+  };
 };
 
 class AutocompleteComponent {
@@ -733,6 +752,9 @@ export const getBodyCompletion = async (context, request, version, metadataServi
   if (!bodyState) {
     return { from: context.pos, options: [], validFor: BODY_VALID_FOR_RE };
   }
+  if (bodyState.insideString && bodyState.stringType === 'value') {
+    return { from: context.pos, options: [], validFor: BODY_VALID_FOR_RE };
+  }
   const api = getCompiledApi(version);
   const endpointName = findMatchingEndpoints(api, request.method, request.path, version)[0]?.[0];
   const endpoint = endpointName ? api.endpoints[endpointName] : null;
@@ -750,7 +772,12 @@ export const getBodyCompletion = async (context, request, version, metadataServi
   const isObjectKeyInsertionPoint = isQuotedKeyInput || isPlainKeyInsertionPoint;
   const prefix = isQuotedKeyInput && quotedKeyPrefix ? quotedKeyPrefix.prefix : defaultPrefix;
   const prefixFrom = isQuotedKeyInput && quotedKeyPrefix ? lineInfo.lineStart + quotedKeyPrefix.fromOffset : defaultFrom;
-  if ((isObjectKeyInsertionPoint && prefix.length < 1) || trimmedBeforeCursor.endsWith(',')) return { from: context.pos, options: [] };
+  const isEmptyObjectKeySlot =
+    bodyState.activeType === 'object' &&
+    bodyState.expectingKey &&
+    prefix.length < 1 &&
+    (isObjectKeyInsertionPoint || trimmedBeforeCursor.endsWith('{'));
+  if (isEmptyObjectKeySlot || trimmedBeforeCursor.endsWith(',')) return { from: context.pos, options: [] };
   const desiredIndent = bodyState.activeType === 'object' && bodyState.nestingDepth > 0 ? '  '.repeat(bodyState.nestingDepth) : lineInfo.indent;
   const options = filterOptions(
     (runtimeContext.autoCompleteSet || [])

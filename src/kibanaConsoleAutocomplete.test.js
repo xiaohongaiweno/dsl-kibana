@@ -116,6 +116,102 @@ test('text after a closed array does not trigger body completions', async () => 
   assert.deepEqual(getLabels(result.options || []), []);
 });
 
+test('space inside an empty object does not trigger top-level body completions', async () => {
+  const text = 'POST /xiao/_search\n{ }';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.lastIndexOf(' ') + 1,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
+test('space inside a nested empty object does not trigger body completions', async () => {
+  const text = 'POST /xiao/_search\n{ "query": { } }';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.lastIndexOf(' }') + 1,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
+test('typing a key prefix inside an object still returns matching completions', async () => {
+  const text = 'POST /xiao/_search\n{ q';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.ok(getLabels(result.options || []).includes('query'));
+});
+
+test('quoted key input inside an object still returns matching completions', async () => {
+  const text = 'POST /xiao/_search\n{ "qu';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.ok(getLabels(result.options || []).includes('query'));
+});
+
+test('space inside a quoted string value does not trigger sibling object completions', async () => {
+  const text = 'GET /_search\n{\n  "query": {\n    "term": {\n      "FIELD": {\n        "value": "ab cd"\n      }\n    }\n  }\n}';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.indexOf('ab cd') + 3,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
+test('punctuation inside a quoted string value does not trigger sibling object completions', async () => {
+  const text = 'GET /_search\n{\n  "query": {\n    "term": {\n      "FIELD": {\n        "value": "ab,cd"\n      }\n    }\n  }\n}';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.indexOf('ab,cd') + 3,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
+test('mismatched closing bracket inside an object does not fall back to root completions', async () => {
+  const text = 'GET /_search\n{\n  "query": {\n    ]\n  }\n}';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.indexOf(']') + 1,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
+test('mismatched closing brace inside an array does not fall back to root completions', async () => {
+  const text = 'GET /_search\n{\n  "sort": [\n    }\n  ]\n}';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.indexOf('}') + 1,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
 test('partial invalid array token does not trigger root object completions', async () => {
   const text = 'POST /xiao/_search\n[qu';
   const result = await getKibanaCompletions({
