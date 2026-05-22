@@ -231,10 +231,7 @@ export const parseConsoleRequests = text => {
  * - 返回带增强字段的请求块对象；若不存在请求块则返回 `null`。
  */
 export const findRequestAtOffset = (parsed, offset) => {
-  const request =
-    parsed.requests.find(item => offset >= item.start && offset <= item.end) ||
-    parsed.requests.at(-1) ||
-    null;
+  const request = parsed.requests.find(item => offset >= item.start && offset <= item.end) || null;
   if (!request) return null;
   const lineNumber = getLineNumberForOffset(parsed.lineStarts, offset);
   return {

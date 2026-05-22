@@ -141,3 +141,30 @@ test('second request block still gets method completions after first body closes
 
   assert.ok(labels.includes('POST'));
 });
+
+test('new top-level line gets method completions instead of reusing later request block', async () => {
+  const text = 'g\nGET /_search\n{\n  "query": {\n    "match_all": {}\n  }\n}';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: 1,
+    version: 'es7',
+    metadataService,
+  });
+
+  const labels = getLabels(result.options || []);
+
+  assert.ok(labels.includes('GET'));
+  assert.ok(!labels.includes('aggs'));
+});
+
+test('standalone json body does not get method completions inside object', async () => {
+  const text = '{\n  g';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.ok(!getLabels(result.options || []).includes('GET'));
+});

@@ -144,6 +144,7 @@ const getLooseRequestLineInfo = (text, cursor) => {
   const parsedLine = parseRequestLineForCompletion(lineInfo.lineText);
   return parsedLine && lineInfo.lineText.includes(' ') ? { ...lineInfo, parsedLine } : null;
 };
+const isInsideStandaloneJsonContainer = (text, lineStart) => parseBodyTokenPath(text, lineStart)?.nestingDepth > 0;
 const getEndpointPathOptions = (api, method, version) =>
   uniqBy(
     Object.values(api.endpoints)
@@ -410,6 +411,8 @@ export const createKibanaCompletionSource = (versionRef, explicitMetadataService
   const compiledApi = getCompiledApi(version);
   const metadataService = explicitMetadataService || versionRef.metadataService || null;
   if (!request) {
+    const lineInfo = getTextLineInfo(docText, context.pos);
+    if (isInsideStandaloneJsonContainer(docText, lineInfo.lineStart)) return { from: context.pos, options: [] };
     const looseRequestLine = getLooseRequestLineInfo(docText, context.pos);
     if (looseRequestLine) {
       return getRequestLinePathCompletions({
@@ -453,7 +456,8 @@ export const getKibanaCompletions = async ({ text, cursor, version = 'es7', meta
     pos: cursor,
     state: { doc: { toString: () => text, line: number => ({ text: text.split(/\r?\n/)[number - 1] || '' }) } },
     matchBefore(regexp) {
-      const match = text.slice(0, cursor).match(regexp);
+      const beforeCursor = text.slice(0, cursor);
+      const match = beforeCursor.match(new RegExp(`${regexp.source}$`, regexp.flags));
       return match ? { from: cursor - match[0].length, to: cursor, text: match[0] } : null;
     },
   });
