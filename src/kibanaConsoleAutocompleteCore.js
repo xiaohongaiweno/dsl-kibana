@@ -303,10 +303,15 @@ export const parseBodyTokenPath = (bodyText, offset) => {
     return null;
   }
 
-  if (currentLiteral && stack.at(-1)?.type === 'array') stack.at(-1).tokens.push(currentLiteral);
   const active = stack.at(-1) || { type: 'object', path: [], tokenPath: [], tokens: [] };
   const tokenPath = [...active.tokenPath];
   if (active.type === 'array' && active.tokens.length) tokenPath.push(active.tokens);
+  const currentValuePrefix =
+    inString && currentStringType === 'value'
+      ? currentString
+      : active.type === 'array' && currentLiteral
+        ? currentLiteral
+        : '';
   return {
     tokenPath,
     rulePath: [...active.path],
@@ -316,6 +321,7 @@ export const parseBodyTokenPath = (bodyText, offset) => {
     nestingDepth: stack.length,
     insideString: inString,
     stringType: inString ? currentStringType : null,
+    currentValuePrefix,
   };
 };
 
@@ -752,7 +758,11 @@ export const getBodyCompletion = async (context, request, version, metadataServi
   if (!bodyState) {
     return { from: context.pos, options: [], validFor: BODY_VALID_FOR_RE };
   }
-  if (bodyState.insideString && bodyState.stringType === 'value') {
+  if (
+    bodyState.insideString &&
+    bodyState.stringType === 'value' &&
+    bodyState.activeType !== 'array'
+  ) {
     return { from: context.pos, options: [], validFor: BODY_VALID_FOR_RE };
   }
   const api = getCompiledApi(version);
@@ -770,14 +780,20 @@ export const getBodyCompletion = async (context, request, version, metadataServi
   const isQuotedKeyInput = bodyState.activeType === 'object' && bodyState.expectingKey && lineInfo.beforeCursor.includes('"');
   const isPlainKeyInsertionPoint = bodyState.activeType === 'object' && bodyState.expectingKey && /^\s*[\w.-]*$/.test(lineInfo.beforeCursor);
   const isObjectKeyInsertionPoint = isQuotedKeyInput || isPlainKeyInsertionPoint;
-  const prefix = isQuotedKeyInput && quotedKeyPrefix ? quotedKeyPrefix.prefix : defaultPrefix;
-  const prefixFrom = isQuotedKeyInput && quotedKeyPrefix ? lineInfo.lineStart + quotedKeyPrefix.fromOffset : defaultFrom;
-  const isEmptyObjectKeySlot =
-    bodyState.activeType === 'object' &&
-    bodyState.expectingKey &&
-    prefix.length < 1 &&
-    (isObjectKeyInsertionPoint || trimmedBeforeCursor.endsWith('{'));
-  if (isEmptyObjectKeySlot || trimmedBeforeCursor.endsWith(',')) return { from: context.pos, options: [] };
+  const isArrayValueInput = bodyState.activeType === 'array';
+  const prefix =
+    isQuotedKeyInput && quotedKeyPrefix
+      ? quotedKeyPrefix.prefix
+      : isArrayValueInput
+        ? bodyState.currentValuePrefix || ''
+        : defaultPrefix;
+  const prefixFrom =
+    isQuotedKeyInput && quotedKeyPrefix
+      ? lineInfo.lineStart + quotedKeyPrefix.fromOffset
+      : isArrayValueInput
+        ? context.pos - prefix.length
+        : defaultFrom;
+  if (prefix.length < 1) return { from: context.pos, options: [], validFor: BODY_VALID_FOR_RE };
   const desiredIndent = bodyState.activeType === 'object' && bodyState.nestingDepth > 0 ? '  '.repeat(bodyState.nestingDepth) : lineInfo.indent;
   const options = filterOptions(
     (runtimeContext.autoCompleteSet || [])

@@ -35,12 +35,8 @@ test('sort array suggestions use metadataService fields', async () => {
   const labels = getLabels(result.options || []);
   const byLabel = getOptionMap(result.options || []);
 
-  assert.ok(labels.includes('message'));
-  assert.ok(labels.includes('user.id'));
-  assert.ok(labels.includes('@timestamp'));
-  assert.equal(byLabel.get('message')?.detail, 'text');
-  assert.equal(byLabel.get('user.id')?.detail, 'keyword');
-  assert.equal(byLabel.get('@timestamp')?.detail, 'date');
+  assert.deepEqual(labels, []);
+  assert.equal(byLabel.size, 0);
 });
 
 test('template path placeholder suggestions use metadataService templates', async () => {
@@ -150,6 +146,42 @@ test('typing a key prefix inside an object still returns matching completions', 
   });
 
   assert.ok(getLabels(result.options || []).includes('query'));
+});
+
+test('array value with only whitespace does not trigger completions', async () => {
+  const text = 'GET /_search\n{\n  "query": {\n    "multi_match": {\n      "query": "",\n      "fields": [ \n    }\n  }\n}';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.indexOf('[ ') + 2,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
+});
+
+test('array value prefix still returns matching completions', async () => {
+  const text = 'GET /_search\n{\n  "query": {\n    "multi_match": {\n      "query": "",\n      "fields": [ m\n    }\n  }\n}';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.indexOf('[ m') + 3,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.ok(getLabels(result.options || []).includes('message'));
+});
+
+test('array value after comma with only whitespace does not trigger completions', async () => {
+  const text = 'GET /_search\n{\n  "query": {\n    "multi_match": {\n      "query": "",\n      "fields": [ "message", \n    }\n  }\n}';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.indexOf(', ') + 2,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.deepEqual(getLabels(result.options || []), []);
 });
 
 test('quoted key input inside an object still returns matching completions', async () => {
