@@ -214,6 +214,14 @@ const buildStaticPathSuffix = (patternSegments, startIndex) => {
   }
   return suffix.length ? suffix.join('/') : null;
 };
+const matchesFixedPathSegment = (typedSegment, patternSegment, index) => {
+  if (!patternSegment) return false;
+  if (!PATH_PARAM_RE.test(patternSegment)) return patternSegment === typedSegment;
+  // Leading `_` denotes top-level REST namespaces like `/_cluster` and should
+  // not be swallowed by root placeholders such as `/{index}`.
+  if (index === 0 && typedSegment.startsWith('_')) return false;
+  return true;
+};
 
 /**
  * 功能：
@@ -246,7 +254,7 @@ const getPathSegmentOptions = async (api, method, rawPath, version, metadataServ
       if (patternSegments.length < pathContext.fixedSegments.length + 1) continue;
       const fixedMatches = pathContext.fixedSegments.every((typedSegment, index) => {
         const patternSegment = patternSegments[index];
-        return patternSegment && (PATH_PARAM_RE.test(patternSegment) || patternSegment === typedSegment);
+        return matchesFixedPathSegment(typedSegment, patternSegment, index);
       });
       if (!fixedMatches) continue;
       const currentPatternSegment = patternSegments[pathContext.fixedSegments.length];

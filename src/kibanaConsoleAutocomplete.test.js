@@ -196,6 +196,30 @@ test('quoted key input inside an object still returns matching completions', asy
   assert.ok(getLabels(result.options || []).includes('query'));
 });
 
+test('cluster namespace path does not get polluted by index placeholder explain endpoint', async () => {
+  const text = 'GET /_cluster/_e';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.ok(!getLabels(result.options || []).includes('_explain'));
+});
+
+test('index path still suggests explain endpoint after concrete index name', async () => {
+  const text = 'GET /logs-2024/_e';
+  const result = await getKibanaCompletions({
+    text,
+    cursor: text.length,
+    version: 'es7',
+    metadataService,
+  });
+
+  assert.ok(getLabels(result.options || []).includes('_explain'));
+});
+
 test('space inside a quoted string value does not trigger sibling object completions', async () => {
   const text = 'GET /_search\n{\n  "query": {\n    "term": {\n      "FIELD": {\n        "value": "ab cd"\n      }\n    }\n  }\n}';
   const result = await getKibanaCompletions({
